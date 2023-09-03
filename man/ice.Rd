@@ -42,7 +42,7 @@ ice(object, ...)
   object,
   v,
   X,
-  pred_fun = function(m, X) m$predict_newdata(X)$response,
+  pred_fun = NULL,
   BY = NULL,
   grid = NULL,
   grid_size = 49L,
@@ -72,12 +72,12 @@ ice(object, ...)
 \item{...}{Additional arguments passed to \code{pred_fun(object, X, ...)},
 for instance \code{type = "response"} in a \code{\link[=glm]{glm()}} model.}
 
-\item{v}{Vector of feature names.}
+\item{v}{Vector of feature names, by default \code{colnames(X)}.}
 
 \item{X}{A data.frame or matrix serving as background dataset.}
 
 \item{pred_fun}{Prediction function of the form \verb{function(object, X, ...)},
-providing \eqn{K \ge 1} numeric predictions per row. Its first argument represents the
+providing \eqn{K \ge 1} predictions per row. Its first argument represents the
 model \code{object}, its second argument a data structure like \code{X}. Additional arguments
 (such as \code{type = "response"} in a GLM) can be passed via \code{...}. The default,
 \code{\link[stats:predict]{stats::predict()}}, will work in most cases. Note that column names in a resulting

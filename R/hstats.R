@@ -22,10 +22,10 @@
 #' [h2_threeway()].
 #'  
 #' @param object Fitted model object.
-#' @param v Vector of feature names.
 #' @param X A data.frame or matrix serving as background dataset.
+#' @param v Vector of feature names, by default `colnames(X)`.
 #' @param pred_fun Prediction function of the form `function(object, X, ...)`,
-#'   providing \eqn{K \ge 1} numeric predictions per row. Its first argument represents the 
+#'   providing \eqn{K \ge 1} predictions per row. Its first argument represents the 
 #'   model `object`, its second argument a data structure like `X`. Additional arguments 
 #'   (such as `type = "response"` in a GLM) can be passed via `...`. The default, 
 #'   [stats::predict()], will work in most cases. Note that column names in a resulting
@@ -35,12 +35,12 @@
 #' @param w Optional vector of case weights for each row of `X`.
 #' @param pairwise_m Number of features for which pairwise statistics are to be 
 #'   calculated. The features are selected based on Friedman and Popescu's overall 
-#'   interaction strength \eqn{H^2_j}. 
-#'   Set to `length(v)` to calculate every pair and to 0 to avoid pairwise calculations.
+#'   interaction strength \eqn{H^2_j}. Set to to 0 to avoid pairwise calculations.
 #'   For multivariate predictions, the union of the column-wise strongest variable
 #'   names is taken. This can lead to very long run-times.
 #' @param threeway_m Same as `pairwise_m`, but controlling the number of features for
 #'   which threeway interactions should be calculated. Not larger than `pairwise_m`.
+#'   Set to 0 to avoid threeway calculations.
 #' @param verbose Should a progress bar be shown? The default is `TRUE`.
 #' @param ... Additional arguments passed to `pred_fun(object, X, ...)`, 
 #'   for instance `type = "response"` in a [glm()] model.
@@ -78,7 +78,7 @@
 #' @examples
 #' # MODEL 1: Linear regression
 #' fit <- lm(Sepal.Length ~ . + Petal.Width:Species, data = iris)
-#' s <- hstats(fit, v = names(iris[-1]), X = iris, verbose = FALSE)
+#' s <- hstats(fit, X = iris[-1])
 #' s
 #' plot(s)
 #' summary(s)
@@ -88,8 +88,7 @@
 #' 
 #' # MODEL 2: Multi-response linear regression
 #' fit <- lm(as.matrix(iris[1:2]) ~ Petal.Length + Petal.Width * Species, data = iris)
-#' v <- c("Petal.Length", "Petal.Width", "Species")
-#' s <- hstats(fit, v = v, X = iris, verbose = FALSE)
+#' s <- hstats(fit, X = iris[3:5], verbose = FALSE)
 #' plot(s)
 #' summary(s)
 #'
@@ -97,13 +96,11 @@
 #' fit <- glm(Sepal.Length ~ ., data = iris, family = Gamma(link = log))
 #' 
 #' # No interactions for additive features, at least on link scale
-#' s <- hstats(fit, v = names(iris[-1]), X = iris, verbose = FALSE)
+#' s <- hstats(fit, X = iris[-1], verbose = FALSE)
 #' summary(s)
 #' 
 #' # On original scale, we have interactions everywhere...
-#' s <- hstats(
-#'   fit, v = names(iris[-1]), X = iris, type = "response", verbose = FALSE
-#' )
+#' s <- hstats(fit, X = iris[-1], type = "response", verbose = FALSE)
 #' 
 #' # All three types use different denominators
 #' plot(s, which = 1:3, ncol = 1)
@@ -116,7 +113,8 @@ hstats <- function(object, ...) {
 
 #' @describeIn hstats Default hstats method.
 #' @export
-hstats.default <- function(object, v, X, pred_fun = stats::predict, n_max = 300L, 
+hstats.default <- function(object, X, v = colnames(X),
+                           pred_fun = stats::predict, n_max = 300L, 
                            w = NULL, pairwise_m = 5L, threeway_m = pairwise_m,
                            verbose = TRUE, ...) {
   basic_check(X = X, v = v, pred_fun = pred_fun, w = w)
@@ -221,14 +219,14 @@ hstats.default <- function(object, v, X, pred_fun = stats::predict, n_max = 300L
 
 #' @describeIn hstats Method for "ranger" models.
 #' @export
-hstats.ranger <- function(object, v, X,
+hstats.ranger <- function(object, X, v = colnames(X),
                           pred_fun = function(m, X, ...) stats::predict(m, X, ...)$predictions,
                           n_max = 300L, w = NULL, pairwise_m = 5L, 
                           threeway_m = pairwise_m, verbose = TRUE, ...) {
   hstats.default(
     object = object,
-    v = v,
     X = X,
+    v = v,
     pred_fun = pred_fun,
     n_max = n_max,
     w = w,
@@ -241,14 +239,17 @@ hstats.ranger <- function(object, v, X,
 
 #' @describeIn hstats Method for "mlr3" models.
 #' @export
-hstats.Learner <- function(object, v, X,
-                           pred_fun = function(m, X) m$predict_newdata(X)$response,
+hstats.Learner <- function(object, X, v = colnames(X),
+                           pred_fun = NULL,
                            n_max = 300L, w = NULL, pairwise_m = 5L,
                            threeway_m = pairwise_m, verbose = TRUE, ...) {
+  if (is.null(pred_fun)) {
+    pred_fun <- mlr3_pred_fun(object, X = X)
+  }
   hstats.default(
     object = object,
-    v = v,
     X = X,
+    v = v,
     pred_fun = pred_fun,
     n_max = n_max,
     w = w,
@@ -261,16 +262,16 @@ hstats.Learner <- function(object, v, X,
 
 #' @describeIn hstats Method for DALEX "explainer".
 #' @export
-hstats.explainer <- function(object, v = colnames(object[["data"]]), 
-                             X = object[["data"]],
+hstats.explainer <- function(object, X = object[["data"]],
+                             v = colnames(X),
                              pred_fun = object[["predict_function"]],
                              n_max = 300L, w = object[["weights"]], 
                              pairwise_m = 5L, threeway_m = pairwise_m,
                              verbose = TRUE, ...) {
   hstats.default(
     object = object[["model"]],
-    v = v,
     X = X,
+    v = v,
     pred_fun = pred_fun,
     n_max = n_max,
     w = w,
@@ -302,22 +303,44 @@ print.hstats <- function(x, ...) {
 #' 
 #' Summary method for "hstats" object.
 #'
-#' @param object An object of class "hstats".
-#' @param top_m Maximum number of rows of results to print.
-#' @param ... Further arguments passed to statistics, e.g., `normalize = FALSE`.
-#' @returns A named list of statistics.
+#' @inheritParams h2_overall
+#' @param ... Currently not used.
+#' @returns 
+#'   An object of class "summary_hstats" representing a named list with statistics.
 #' @export
 #' @seealso See [hstats()] for examples.
-summary.hstats <- function(object, top_m = 6L, ...) {
-  out <- list(
-    h2 = h2(object, ...), 
-    h2_overall = h2_overall(object, top_m = Inf, plot = FALSE, ...), 
-    h2_pairwise = h2_pairwise(object, top_m = Inf, plot = FALSE, ...), 
-    h2_threeway = h2_threeway(object, top_m = Inf, plot = FALSE, ...)
+summary.hstats <- function(object, normalize = TRUE, squared = TRUE, sort = TRUE, 
+                           top_m = Inf, eps = 1e-8, ...) {
+  args <- list(
+    object = object, 
+    normalize = normalize, 
+    squared = squared, 
+    sort = sort,
+    top_m = top_m,
+    eps = eps,
+    plot = FALSE
   )
-  out <- out[sapply(out, Negate(is.null))]
-  
-  addon <- "(only for features with strong overall interactions)"
+   out <- list(
+    h2 = h2(object, normalize = normalize, squared = squared, eps = eps), 
+    h2_overall = do.call(h2_overall, args), 
+    h2_pairwise = do.call(h2_pairwise, args), 
+    h2_threeway = do.call(h2_threeway, args)
+  )
+  class(out) <- "summary_hstats"
+  out
+}
+
+#' Print Method
+#' 
+#' Print method for object of class "summary_hstats".
+#'
+#' @param x An object of class "summary_hstats".
+#' @param ... Further arguments passed from other methods.
+#' @returns Invisibly, the input is returned.
+#' @export
+#' @seealso See [hstats()] for examples.
+print.summary_hstats <- function(x, ...) {
+  addon <- "(for features with strong overall interactions)"
   txt <- c(
     h2 = "Proportion of prediction variability unexplained by main effects of v",
     h2_overall = "Strongest overall interactions", 
@@ -325,42 +348,40 @@ summary.hstats <- function(object, top_m = 6L, ...) {
     h2_threeway = paste0("Strongest relative three-way interactions\n", addon)
   )
   
-  for (nm in names(out)) {
+  for (nm in names(Filter(Negate(is.null), x))) {
     cat(txt[[nm]])
     cat("\n")
-    print(utils::head(out[[nm]], top_m))
+    print(utils::head(drop(x[[nm]])))
     cat("\n")
   }
-  invisible(out)
+  invisible(x)
 }
 
 #' Plot Method for "hstats" Object
 #' 
 #' Plot method for object of class "hstats".
 #'
-#' @param x An object of class "hstats".
+#' @param x Object of class "hstats".
 #' @param which Which statistic(s) to be shown? Default is `1:2`, i.e., show both
 #'   \eqn{H^2_j} (1) and \eqn{H^2_{jk}} (2). To also show three-way interactions,
 #'   use `1:3`.
-#' @param top_m Maximum number of rows of results to plot.
-#' @param fill Color of bars (univariate case).
 #' @param facet_scales Value passed to `ggplot2::facet_wrap(scales = ...)`.
 #' @param ncol Passed to `ggplot2::facet_wrap()`.
-#' @param ... Further arguments passed to statistics, e.g., `normalize = FALSE`.
+#' @param rotate_x Should x axis labels be rotated by 45 degrees?
+#' @param ... Passed to [ggplot2::geom_bar()].
+#' @inheritParams h2_overall
 #' @returns An object of class "ggplot".
 #' @export
 #' @seealso See [hstats()] for examples.
-plot.hstats <- function(x, which = 1:2, top_m = 15L, fill = "#2b51a1", 
-                        facet_scales = "free", ncol = 2L, ...) {
+plot.hstats <- function(x, which = 1:2, normalize = TRUE, squared = TRUE, sort = TRUE, 
+                        top_m = 15L, eps = 1e-8, fill = "#2b51a1", 
+                        facet_scales = "free", ncol = 2L, rotate_x = FALSE, ...) {
+  su <- summary(
+    x, normalize = normalize, squared = squared, sort = sort, top_m = top_m, eps = eps
+  )
+  nms <- c("h2_overall", "h2_pairwise", "h2_threeway")
   ids <- c("Overall", "Pairwise", "Threeway")
-  funs <- c(h2_overall, h2_pairwise, h2_threeway)
-  dat <- list()
-  i <- 1L
-  for (f in funs) {
-    if (i %in% which)
-      dat[[i]] <- mat2df(f(x, top_m = top_m, plot = FALSE, ...), id = ids[i])
-    i <- i + 1L
-  }
+  dat <- lapply(which, FUN = function(j) mat2df(su[[nms[j]]], id = ids[j]))
   dat <- do.call(rbind, dat)
   p <- ggplot2::ggplot(dat, ggplot2::aes(x = value_, y = variable_)) +
     ggplot2::ylab(ggplot2::element_blank()) +
@@ -370,12 +391,15 @@ plot.hstats <- function(x, which = 1:2, top_m = 15L, fill = "#2b51a1",
     p <- p + 
       ggplot2::facet_wrap(~ id_, ncol = ncol, scales = facet_scales)
   }
+  if (rotate_x) {
+    p <- p + rotate_x_labs()
+  }
   if (length(unique(dat[["varying_"]])) == 1L) {
-    p + ggplot2::geom_bar(fill = fill, stat = "identity")
+    p + ggplot2::geom_bar(fill = fill, stat = "identity", ...)
   } else {
     p + 
       ggplot2::geom_bar(
-        ggplot2::aes(fill = varying_), stat = "identity", position = "dodge"
+        ggplot2::aes(fill = varying_), stat = "identity", position = "dodge", ...
       ) + 
       ggplot2::labs(fill = "Dim")
   }

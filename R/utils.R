@@ -1,5 +1,5 @@
 # Fix undefined global variable note
-utils::globalVariables(c("varying_", "value_", "id_", "variable_", "obs_"))
+utils::globalVariables(c("varying_", "value_", "id_", "variable_", "obs_", "error_"))
 
 #' Aligns Predictions
 #' 
@@ -30,8 +30,11 @@ align_pred <- function(x) {
 #' @param x Vector or matrix.
 #' @param ngroups Number of groups of fixed length `NROW(x) / ngroups`.
 #' @param w Optional vector with case weights of length `NROW(x) / ngroups`.
-#' @returns A (g x K) matrix, where g is the grid size, and K = NCOL(x).
-wrowmean <- function(x, ngroups, w = NULL) {
+#' @returns A (g x K) matrix, where g is the number of groups, and K = NCOL(x).
+wrowmean <- function(x, ngroups = 1L, w = NULL) {
+  if (ngroups == 1L) {
+    return(rbind(wcolMeans(x, w = w)))
+  }
   p <- NCOL(x)
   n_bg <- NROW(x) %/% ngroups
   g <- rep(seq_len(ngroups), each = n_bg)
@@ -130,10 +133,39 @@ wrowmean <- function(x, ngroups, w = NULL) {
 #' @param w Optional case weights.
 #' @returns A vector of column means.
 wcolMeans <- function(x, w = NULL) {
+  if (NCOL(x) == 1L && is.null(w)) {
+    return(mean(x))
+  }
   if (!is.matrix(x)) {
     x <- as.matrix(x)
   }
   if (is.null(w)) colMeans(x) else colSums(x * w) / sum(w) 
+}
+
+#' Grouped wcolMeans()
+#' 
+#' Internal function used to calculate grouped column-wise weighted means.
+#' 
+#' @noRd
+#' @keywords internal
+#' 
+#' @param x A matrix-like object.
+#' @param g Optional grouping variable.
+#' @param w Optional case weights.
+#' @param reorder Should groups be ordered, see [rowsum()]. Default is `TRUE`. 
+#' @returns A matrix with one row per group.
+gwColMeans <- function(x, g = NULL, w = NULL, reorder = TRUE) {
+  if (is.null(g)) {
+    return(rbind(wcolMeans(x, w = w)))
+  }
+  if (is.null(w)) {
+    num <- rowsum(x, group = g, reorder = reorder)
+    denom <- rowsum(rep.int(1, NROW(x)), group = g, reorder = reorder)
+  } else {
+    num <- rowsum(x * w, group = g, reorder = reorder)
+    denom <- rowsum(w, group = g, reorder = reorder)
+  }
+  num / matrix(denom, nrow = nrow(num), ncol = ncol(num), byrow = FALSE)
 }
 
 #' Weighted Mean Centering
@@ -182,7 +214,7 @@ basic_check <- function(X, v, pred_fun, w = NULL) {
 #' @noRd
 #' @keywords internal
 #' 
-#' @inheritParams H2_j
+#' @inheritParams H2_overall
 #' @param num Matrix or vector of statistic.
 #' @param denom Denominator of statistic (a matrix, number, or vector compatible with `num`).
 #' @returns Matrix or vector of statistics.
@@ -336,3 +368,28 @@ rotate_x_labs <- function() {
     axis.text.x = ggplot2::element_text(angle = 45, hjust = 1, vjust = 1)
   )
 }
+
+#' mlr3 Helper
+#' 
+#' Returns the prediction function of a mlr3 Learner.
+#' 
+#' @noRd
+#' @keywords internal
+#' 
+#' @param object Learner object.
+#' @param X Dataframe like object.
+#' 
+#' @returns A function.
+mlr3_pred_fun <- function(object, X) {
+  if ("classif" %in% object$task_type) {
+    # Check if probabilities are available
+    test_pred <- object$predict_newdata(utils::head(X))
+    if ("prob" %in% test_pred$predict_types) {
+      return(function(m, X) m$predict_newdata(X)$prob)
+    } else {
+      stop("Set lrn(..., predict_type = 'prob') to allow for probabilistic classification.")
+    }
+  }
+  function(m, X) m$predict_newdata(X)$response
+}
+

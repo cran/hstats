@@ -12,8 +12,8 @@ hstats(object, ...)
 
 \method{hstats}{default}(
   object,
-  v,
   X,
+  v = colnames(X),
   pred_fun = stats::predict,
   n_max = 300L,
   w = NULL,
@@ -25,8 +25,8 @@ hstats(object, ...)
 
 \method{hstats}{ranger}(
   object,
-  v,
   X,
+  v = colnames(X),
   pred_fun = function(m, X, ...) stats::predict(m, X, ...)$predictions,
   n_max = 300L,
   w = NULL,
@@ -38,9 +38,9 @@ hstats(object, ...)
 
 \method{hstats}{Learner}(
   object,
-  v,
   X,
-  pred_fun = function(m, X) m$predict_newdata(X)$response,
+  v = colnames(X),
+  pred_fun = NULL,
   n_max = 300L,
   w = NULL,
   pairwise_m = 5L,
@@ -51,8 +51,8 @@ hstats(object, ...)
 
 \method{hstats}{explainer}(
   object,
-  v = colnames(object[["data"]]),
   X = object[["data"]],
+  v = colnames(X),
   pred_fun = object[["predict_function"]],
   n_max = 300L,
   w = object[["weights"]],
@@ -68,12 +68,12 @@ hstats(object, ...)
 \item{...}{Additional arguments passed to \code{pred_fun(object, X, ...)},
 for instance \code{type = "response"} in a \code{\link[=glm]{glm()}} model.}
 
-\item{v}{Vector of feature names.}
-
 \item{X}{A data.frame or matrix serving as background dataset.}
 
+\item{v}{Vector of feature names, by default \code{colnames(X)}.}
+
 \item{pred_fun}{Prediction function of the form \verb{function(object, X, ...)},
-providing \eqn{K \ge 1} numeric predictions per row. Its first argument represents the
+providing \eqn{K \ge 1} predictions per row. Its first argument represents the
 model \code{object}, its second argument a data structure like \code{X}. Additional arguments
 (such as \code{type = "response"} in a GLM) can be passed via \code{...}. The default,
 \code{\link[stats:predict]{stats::predict()}}, will work in most cases. Note that column names in a resulting
@@ -86,13 +86,13 @@ selected from \code{X}. In this case, set a random seed for reproducibility.}
 
 \item{pairwise_m}{Number of features for which pairwise statistics are to be
 calculated. The features are selected based on Friedman and Popescu's overall
-interaction strength \eqn{H^2_j}.
-Set to \code{length(v)} to calculate every pair and to 0 to avoid pairwise calculations.
+interaction strength \eqn{H^2_j}. Set to to 0 to avoid pairwise calculations.
 For multivariate predictions, the union of the column-wise strongest variable
 names is taken. This can lead to very long run-times.}
 
 \item{threeway_m}{Same as \code{pairwise_m}, but controlling the number of features for
-which threeway interactions should be calculated. Not larger than \code{pairwise_m}.}
+which threeway interactions should be calculated. Not larger than \code{pairwise_m}.
+Set to 0 to avoid threeway calculations.}
 
 \item{verbose}{Should a progress bar be shown? The default is \code{TRUE}.}
 }
@@ -161,7 +161,7 @@ more flexible functions \code{\link[=h2]{h2()}}, \code{\link[=h2_overall]{h2_ove
 \examples{
 # MODEL 1: Linear regression
 fit <- lm(Sepal.Length ~ . + Petal.Width:Species, data = iris)
-s <- hstats(fit, v = names(iris[-1]), X = iris, verbose = FALSE)
+s <- hstats(fit, X = iris[-1])
 s
 plot(s)
 summary(s)
@@ -171,8 +171,7 @@ h2_pairwise(s, normalize = FALSE, squared = FALSE, plot = FALSE)
 
 # MODEL 2: Multi-response linear regression
 fit <- lm(as.matrix(iris[1:2]) ~ Petal.Length + Petal.Width * Species, data = iris)
-v <- c("Petal.Length", "Petal.Width", "Species")
-s <- hstats(fit, v = v, X = iris, verbose = FALSE)
+s <- hstats(fit, X = iris[3:5], verbose = FALSE)
 plot(s)
 summary(s)
 
@@ -180,13 +179,11 @@ summary(s)
 fit <- glm(Sepal.Length ~ ., data = iris, family = Gamma(link = log))
 
 # No interactions for additive features, at least on link scale
-s <- hstats(fit, v = names(iris[-1]), X = iris, verbose = FALSE)
+s <- hstats(fit, X = iris[-1], verbose = FALSE)
 summary(s)
 
 # On original scale, we have interactions everywhere...
-s <- hstats(
-  fit, v = names(iris[-1]), X = iris, type = "response", verbose = FALSE
-)
+s <- hstats(fit, X = iris[-1], type = "response", verbose = FALSE)
 
 # All three types use different denominators
 plot(s, which = 1:3, ncol = 1)
