@@ -79,9 +79,9 @@ for instance \code{type = "response"} in a \code{\link[=glm]{glm()}} model.}
 \item{pred_fun}{Prediction function of the form \verb{function(object, X, ...)},
 providing \eqn{K \ge 1} predictions per row. Its first argument represents the
 model \code{object}, its second argument a data structure like \code{X}. Additional arguments
-(such as \code{type = "response"} in a GLM) can be passed via \code{...}. The default,
-\code{\link[stats:predict]{stats::predict()}}, will work in most cases. Note that column names in a resulting
-matrix of predictions will be used as default column names in the results.}
+(such as \code{type = "response"} in a GLM, or \code{reshape = TRUE} in a multiclass XGBoost
+model) can be passed via \code{...}. The default, \code{\link[stats:predict]{stats::predict()}}, will work in
+most cases.}
 
 \item{BY}{Optional grouping vector/matrix/data.frame (up to two columns),
 or up to two column names. Unlike with \code{\link[=partial_dep]{partial_dep()}}, these variables are not
@@ -89,18 +89,18 @@ binned. The first variable is visualized on the color scale, while the second
 one goes into a \code{facet_wrap()}. Thus, make sure that the second variable is
 discrete.}
 
-\item{grid}{A vector (if \code{length(v) == 1L}), or a matrix/data.frame otherwise.
-If \code{NULL}, calculated via \code{\link[=multivariate_grid]{multivariate_grid()}}.}
+\item{grid}{Evaluation grid. A vector (if \code{length(v) == 1L}), or a matrix/data.frame
+otherwise. If \code{NULL}, calculated via \code{\link[=multivariate_grid]{multivariate_grid()}}.}
 
 \item{grid_size}{Controls the approximate grid size. If \code{x} has p columns, then each
 (non-discrete) column will be reduced to about the p-th root of \code{grid_size} values.}
 
-\item{trim}{A non-discrete numeric variable is trimmed at these quantile
-probabilities before calculations. Set to \code{c(0, 1)} for no trimming.}
+\item{trim}{The default \code{c(0.01, 0.99)} means that values outside the
+1\% and 99\% quantiles of non-discrete numeric columns are removed before calculation
+of grid values. Set to \code{0:1} for no trimming.}
 
-\item{strategy}{How to find evaluation points of non-discrete numeric columns?
-Either "uniform" (via \code{\link[=pretty]{pretty()}}) or "quantile", see description of
-\code{\link[=univariate_grid]{univariate_grid()}}.}
+\item{strategy}{How to find grid values of non-discrete numeric columns?
+Either "uniform" or "quantile", see description of \code{\link[=univariate_grid]{univariate_grid()}}.}
 
 \item{n_max}{If \code{X} has more than \code{n_max} rows, a random sample of \code{n_max} rows is
 selected from \code{X}. In this case, set a random seed for reproducibility.}
@@ -154,11 +154,7 @@ plot(ic)
 plot(ic, center = TRUE)
 
 # MODEL 3: Gamma GLM -> pass options to predict() via ...
-fit <- glm(
-  Sepal.Length ~ . + Petal.Width:Species,
-  data = iris,
-  family = Gamma(link = log)
-)
+fit <- glm(Sepal.Length ~ ., data = iris, family = Gamma(link = log))
 plot(ice(fit, v = "Petal.Length", X = iris, BY = "Species"))
 plot(ice(fit, v = "Petal.Length", X = iris, type = "response", BY = "Species"))
 }

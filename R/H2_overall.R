@@ -44,6 +44,7 @@
 #' @param sort Should results be sorted? Default is `TRUE`.
 #'   (Multioutput is sorted by row means.)
 #' @param top_m How many rows should be shown? (`Inf` to show all.)
+#' @param zero Should rows with all 0 be shown? Default is `TRUE`.
 #' @param eps Threshold below which numerator values are set to 0.
 #' @param plot Should results be plotted as barplot? Default is `FALSE`.
 #' @param fill Color of bar (only for univariate statistics).
@@ -64,7 +65,7 @@
 #' # MODEL 2: Multi-response linear regression
 #' fit <- lm(as.matrix(iris[1:2]) ~ Petal.Length + Petal.Width * Species, data = iris)
 #' s <- hstats(fit, X = iris[3:5], verbose = FALSE)
-#' h2_overall(s, plot = TRUE)
+#' h2_overall(s, plot = TRUE, zero = FALSE)
 h2_overall <- function(object, ...) {
   UseMethod("h2_overall")
 }
@@ -78,22 +79,38 @@ h2_overall.default <- function(object, ...) {
 #' @describeIn h2_overall Overall interaction strength from "hstats" object.
 #' @export
 h2_overall.hstats <- function(object, normalize = TRUE, squared = TRUE, sort = TRUE, 
-                              top_m = 15L, eps = 1e-8, plot = FALSE, fill = "#2b51a1", 
-                              ...) {
-  num <- with(
-    object, matrix(nrow = length(v), ncol = K, dimnames = list(v, pred_names))
-  )
-  for (z in object[["v"]]) {
-    num[z, ] <- with(object, wcolMeans((f - F_j[[z]] - F_not_j[[z]])^2, w = w))
-  }
+                              top_m = 15L, zero = TRUE, eps = 1e-8, 
+                              plot = FALSE, fill = "#2b51a1", ...) {
+  s <- object$h2_overall
   out <- postprocess(
-    num = num,
-    denom = object[["mean_f2"]],
+    num = s$num,
+    denom = s$denom,
     normalize = normalize, 
     squared = squared, 
     sort = sort, 
-    top_m = top_m, 
+    top_m = top_m,
+    zero = zero,
     eps = eps
   )
   if (plot) plot_stat(out, fill = fill, ...) else out
+}
+
+# Helper function
+
+#' Raw H2 Overall
+#' 
+#' Internal helper function that calculates numerator and denominator of
+#' statistic in title.
+#' 
+#' @noRd
+#' @keywords internal
+#' @param x A list containing the elements "v", "K", "pred_names", 
+#'   "f", "F_not_j", "F_j", "mean_f2", and "w".
+#' @returns A list with the numerator and denominator statistics.
+h2_overall_raw <- function(x) {
+  num <- init_numerator(x, way = 1L)
+  for (z in x[["v"]]) {
+    num[z, ] <- with(x, wcolMeans((f - F_j[[z]] - F_not_j[[z]])^2, w = w))
+  }
+  list(num = num, denom = x[["mean_f2"]])
 }

@@ -158,7 +158,7 @@ Let's study different plots to understand *how* the strong interaction between d
 They all reveal a substantial interaction between the two variables in the sense that the age effect gets weaker the closer to the ocean. Note that numeric `BY` features are automatically binned into quartile groups.
 
 ```r
-plot(partial_dep(fit, v = "age", X = X_train, BY = "log_ocean"))
+plot(partial_dep(fit, v = "age", X = X_train, BY = "log_ocean"), show_points = FALSE)
 ```
 
 ![](man/figures/pdp_ocean_age.svg)
@@ -255,7 +255,7 @@ library(ggplot2)
 
 set.seed(1)
 fit <- ranger(Species ~ ., data = iris, probability = TRUE)
-average_loss(fit, X = iris, y = iris$Species, loss = "mlogloss")  # 0.054
+average_loss(fit, X = iris, y = iris$Species, loss = "mlogloss")  # 0.0521
 
 s <- hstats(fit, X = iris[-5])
 s

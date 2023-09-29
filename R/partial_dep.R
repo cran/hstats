@@ -2,7 +2,7 @@
 #' 
 #' Estimates the partial dependence function of feature(s) `v` over a 
 #' grid of values. Both multivariate and multivariable situations are supported.
-#' By default, the resulting values are plotted.
+#' The resulting object can be plotted via `plot()`.
 #' 
 #' @section Partial Dependence Functions: 
 #' 
@@ -31,8 +31,8 @@
 #' 
 #' @inheritParams hstats
 #' @inheritParams multivariate_grid
-#' @param grid A vector (if `length(v) == 1L`), or a matrix/data.frame otherwise.
-#'   If `NULL`, calculated via [multivariate_grid()].
+#' @param grid Evaluation grid. A vector (if `length(v) == 1L`), or a matrix/data.frame 
+#'   otherwise. If `NULL`, calculated via [multivariate_grid()].
 #' @param BY Optional grouping vector or a column name. The partial dependence
 #'   function is calculated per `BY` group. Each `BY` group
 #'   uses the same evaluation grid to improve assessment of (non-)additivity.
@@ -82,11 +82,7 @@
 #' pd
 #' 
 #' # MODEL 3: Gamma GLM -> pass options to predict() via ...
-#' fit <- glm(
-#'   Sepal.Length ~ . + Petal.Width:Species, 
-#'   data = iris, 
-#'   family = Gamma(link = log)
-#' )
+#' fit <- glm(Sepal.Length ~ ., data = iris, family = Gamma(link = log))
 #' plot(partial_dep(fit, v = "Petal.Length", X = iris))
 #' plot(partial_dep(fit, v = "Petal.Length", X = iris, type = "response"))
 partial_dep <- function(object, ...) {
