@@ -13,12 +13,15 @@ hstats(object, ...)
 \method{hstats}{default}(
   object,
   X,
-  v = colnames(X),
+  v = NULL,
   pred_fun = stats::predict,
-  n_max = 300L,
-  w = NULL,
   pairwise_m = 5L,
-  threeway_m = min(pairwise_m, 5L),
+  threeway_m = 0L,
+  approx = FALSE,
+  grid_size = 50L,
+  n_max = 500L,
+  eps = 1e-10,
+  w = NULL,
   verbose = TRUE,
   ...
 )
@@ -26,12 +29,15 @@ hstats(object, ...)
 \method{hstats}{ranger}(
   object,
   X,
-  v = colnames(X),
+  v = NULL,
   pred_fun = function(m, X, ...) stats::predict(m, X, ...)$predictions,
-  n_max = 300L,
-  w = NULL,
   pairwise_m = 5L,
-  threeway_m = min(pairwise_m, 5L),
+  threeway_m = 0L,
+  approx = FALSE,
+  grid_size = 50L,
+  n_max = 500L,
+  eps = 1e-10,
+  w = NULL,
   verbose = TRUE,
   ...
 )
@@ -39,12 +45,15 @@ hstats(object, ...)
 \method{hstats}{Learner}(
   object,
   X,
-  v = colnames(X),
+  v = NULL,
   pred_fun = NULL,
-  n_max = 300L,
-  w = NULL,
   pairwise_m = 5L,
-  threeway_m = min(pairwise_m, 5L),
+  threeway_m = 0L,
+  approx = FALSE,
+  grid_size = 50L,
+  n_max = 500L,
+  eps = 1e-10,
+  w = NULL,
   verbose = TRUE,
   ...
 )
@@ -52,12 +61,15 @@ hstats(object, ...)
 \method{hstats}{explainer}(
   object,
   X = object[["data"]],
-  v = colnames(X),
+  v = NULL,
   pred_fun = object[["predict_function"]],
-  n_max = 300L,
-  w = object[["weights"]],
   pairwise_m = 5L,
-  threeway_m = min(pairwise_m, 5L),
+  threeway_m = 0L,
+  approx = FALSE,
+  grid_size = 50L,
+  n_max = 500L,
+  eps = 1e-10,
+  w = object[["weights"]],
   verbose = TRUE,
   ...
 )
@@ -66,11 +78,13 @@ hstats(object, ...)
 \item{object}{Fitted model object.}
 
 \item{...}{Additional arguments passed to \code{pred_fun(object, X, ...)},
-for instance \code{type = "response"} in a \code{\link[=glm]{glm()}} model.}
+for instance \code{type = "response"} in a \code{\link[=glm]{glm()}} model, or \code{reshape = TRUE} in a
+multiclass XGBoost model.}
 
 \item{X}{A data.frame or matrix serving as background dataset.}
 
-\item{v}{Vector of feature names, by default \code{colnames(X)}.}
+\item{v}{Vector of feature names. The default (\code{NULL}) will use all column names of
+\code{X} except the column name of the optional case weight \code{w} (if specified as name).}
 
 \item{pred_fun}{Prediction function of the form \verb{function(object, X, ...)},
 providing \eqn{K \ge 1} predictions per row. Its first argument represents the
@@ -78,11 +92,6 @@ model \code{object}, its second argument a data structure like \code{X}. Additio
 (such as \code{type = "response"} in a GLM, or \code{reshape = TRUE} in a multiclass XGBoost
 model) can be passed via \code{...}. The default, \code{\link[stats:predict]{stats::predict()}}, will work in
 most cases.}
-
-\item{n_max}{If \code{X} has more than \code{n_max} rows, a random sample of \code{n_max} rows is
-selected from \code{X}. In this case, set a random seed for reproducibility.}
-
-\item{w}{Optional vector of case weights for each row of \code{X}.}
 
 \item{pairwise_m}{Number of features for which pairwise statistics are to be
 calculated. The features are selected based on Friedman and Popescu's overall
@@ -92,16 +101,33 @@ strongest variable names is taken. This can lead to very long run-times.}
 
 \item{threeway_m}{Like \code{pairwise_m}, but controls the feature count for
 three-way interactions. Cannot be larger than \code{pairwise_m}.
-The default is \code{min(pairwise_m, 5)}. Set to 0 to avoid three-way calculations.}
+To save computation time, the default is 0.}
+
+\item{approx}{Should quantile approximation be applied to dense numeric features?
+The default is \code{FALSE}. Setting this option to \code{TRUE} brings a massive speed-up
+for one-way calculations. It can, e.g., be used when the number of features is
+very large.}
+
+\item{grid_size}{Integer controlling the number of quantile midpoints used to
+approximate dense numerics. The quantile midpoints are calculated after
+subampling via \code{n_max}. Only relevant if \code{approx = TRUE}.}
+
+\item{n_max}{If \code{X} has more than \code{n_max} rows, a random sample of \code{n_max} rows is
+selected from \code{X}. In this case, set a random seed for reproducibility.}
+
+\item{eps}{Threshold below which numerator values are set to 0. Default is 1e-10.}
+
+\item{w}{Optional vector of case weights. Can also be a column name of \code{X}.}
 
 \item{verbose}{Should a progress bar be shown? The default is \code{TRUE}.}
 }
 \value{
 An object of class "hstats" containing these elements:
 \itemize{
-\item \code{X}: Input \code{X} (sampled to \code{n_max} rows).
-\item \code{w}: Input \code{w} (sampled to \code{n_max} values, or \code{NULL}).
-\item \code{v}: Same as input \code{v}.
+\item \code{X}: Input \code{X} (sampled to \code{n_max} rows, after optional quantile approximation).
+\item \code{w}: Case weight vector \code{w} (sampled to \code{n_max} values), or \code{NULL}.
+\item \code{v}: Vector of column names in \code{X} for which overall
+H statistics have been calculated.
 \item \code{f}: Matrix with (centered) predictions \eqn{F}.
 \item \code{mean_f2}: (Weighted) column means of \code{f}. Used to normalize \eqn{H^2} and
 \eqn{H^2_j}.
@@ -114,23 +140,28 @@ functions \eqn{F_{\setminus j}} of other features.
 \item \code{pairwise_m}: Like input \code{pairwise_m}, but capped at \code{length(v)}.
 \item \code{threeway_m}: Like input \code{threeway_m}, but capped at the smaller of
 \code{length(v)} and \code{pairwise_m}.
+\item \code{eps}: Like input \code{eps}.
+\item \code{pd_importance}: List with numerator and denominator of \eqn{\textrm{PDI}_j}.
 \item \code{h2}: List with numerator and denominator of \eqn{H^2}.
 \item \code{h2_overall}: List with numerator and denominator of \eqn{H^2_j}.
 \item \code{v_pairwise}: Subset of \code{v} with largest \eqn{H^2_j} used for pairwise
-calculations.
+calculations. Only if pairwise calculations have been done.
 \item \code{combs2}: Named list of variable pairs for which pairwise partial
-dependence functions are available.
+dependence functions are available. Only if pairwise calculations have been done.
 \item \code{F_jk}: List of matrices, each representing (centered) bivariate
 partial dependence functions \eqn{F_{jk}}.
+Only if pairwise calculations have been done.
 \item \code{h2_pairwise}: List with numerator and denominator of \eqn{H^2_{jk}}.
 Only if pairwise calculations have been done.
 \item \code{v_threeway}: Subset of \code{v} with largest \code{h2_overall()} used for three-way
-calculations.
+calculations. Only if three-way calculations have been done.
 \item \code{combs3}: Named list of variable triples for which three-way partial
-dependence functions are available.
+dependence functions are available. Only if three-way calculations have been done.
 \item \code{F_jkl}: List of matrices, each representing (centered) three-way
 partial dependence functions \eqn{F_{jkl}}.
+Only if three-way calculations have been done.
 \item \code{h2_threeway}: List with numerator and denominator of \eqn{H^2_{jkl}}.
+Only if three-way calculations have been done.
 }
 }
 \description{
@@ -144,7 +175,9 @@ feature, see \code{\link[=h2_overall]{h2_overall()}} for details.
 \item Friedman and Popescu's statistic \eqn{H^2_{jk}} of pairwise interaction strength,
 see \code{\link[=h2_pairwise]{h2_pairwise()}} for details.
 \item Friedman and Popescu's statistic \eqn{H^2_{jkl}} of three-way interaction strength,
-see \code{\link[=h2_threeway]{h2_threeway()}} for details.
+see \code{\link[=h2_threeway]{h2_threeway()}} for details. To save time, this statistic is not calculated
+by default. Set \code{threeway_m} to a value above 2 to get three-way statistics of the
+\code{threeway_m} variables with strongest overall interaction.
 }
 
 Furthermore, it allows to calculate an experimental partial dependence based
@@ -177,7 +210,7 @@ plot(s, zero = FALSE)  # Drop 0
 summary(s)
   
 # Absolute pairwise interaction strengths
-h2_pairwise(s, normalize = FALSE, squared = FALSE, plot = FALSE, zero = FALSE)
+h2_pairwise(s, normalize = FALSE, squared = FALSE, zero = FALSE)
 
 # MODEL 2: Multi-response linear regression
 fit <- lm(as.matrix(iris[1:2]) ~ Petal.Length + Petal.Width * Species, data = iris)
@@ -192,12 +225,13 @@ fit <- glm(Sepal.Length ~ ., data = iris, family = Gamma(link = log))
 s <- hstats(fit, X = iris[-1], verbose = FALSE)
 summary(s)
 
-# On original scale, we have interactions everywhere...
-s <- hstats(fit, X = iris[-1], type = "response", verbose = FALSE)
-plot(s, which = 1:3, ncol = 1)  # All three types use different denominators
+# On original scale, we have interactions everywhere. 
+# To see three-way interactions, we set threeway_m to a value above 2.
+s <- hstats(fit, X = iris[-1], type = "response", threeway_m = 5)
+plot(s, ncol = 1)  # All three types use different denominators
 
 # All statistics on same scale (of predictions)
-plot(s, which = 1:3, squared = FALSE, normalize = FALSE, facet_scale = "free_y")
+plot(s, squared = FALSE, normalize = FALSE, facet_scale = "free_y")
 }
 \references{
 Friedman, Jerome H., and Bogdan E. Popescu. \emph{"Predictive Learning via Rule Ensembles."}

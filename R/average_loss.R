@@ -1,7 +1,7 @@
 #' Average Loss
 #'
 #' Calculates the average loss of a model on a given dataset, 
-#' optionally grouped by a discrete vector.
+#' optionally grouped by a variable. Use `plot()` to visualize the results.
 #' 
 #' @section Losses: 
 #' 
@@ -31,7 +31,7 @@
 #'   vector or matrix of the same length as the input.
 #'
 #' @inheritParams hstats
-#' @param y Vector/matrix of the response corresponding to `X`.
+#' @param y Vector/matrix of the response, or the corresponding column names in `X`.
 #' @param loss One of "squared_error", "logloss", "mlogloss", "poisson",
 #'   "gamma", "absolute_error", "classification_error". Alternatively, a loss function 
 #'   can be provided that turns observed and predicted values into a numeric vector or 
@@ -39,19 +39,31 @@
 #'   For "mlogloss", the response `y` can either be a dummy matrix or a discrete vector. 
 #'   The latter case is handled via `model.matrix(~ as.factor(y) + 0)`.
 #'   For "classification_error", both predictions and responses can be non-numeric.
-#' @param BY Optional grouping vector.
-#' @returns A matrix with one row per group and one column per loss dimension.
+#' @param agg_cols Should multivariate losses be summed up? Default is `FALSE`.
+#'   In combination with the squared error loss, `agg_cols = TRUE` gives
+#'   the Brier score for (probabilistic) classification.
+#' @param BY Optional grouping vector or column name.
+#'   Numeric `BY` variables with more than `by_size` disjoint values will be 
+#'   binned into `by_size` quantile groups of similar size. 
+#' @param by_size Numeric `BY` variables with more than `by_size` unique values will
+#'   be binned into quantile groups. Only relevant if `BY` is not `NULL`.
+#' @inherit h2_overall return
 #' @export
 #' @examples
 #' # MODEL 1: Linear regression
 #' fit <- lm(Sepal.Length ~ ., data = iris)
-#' average_loss(fit, X = iris, y = iris$Sepal.Length)
-#' average_loss(fit, X = iris, y = iris$Sepal.Length, BY = iris$Species)
+#' average_loss(fit, X = iris, y = "Sepal.Length")
+#' average_loss(fit, X = iris, y = iris$Sepal.Length, BY = iris$Sepal.Width)
+#' average_loss(fit, X = iris, y = "Sepal.Length", BY = "Sepal.Width")
 #'
 #' # MODEL 2: Multi-response linear regression
 #' fit <- lm(as.matrix(iris[1:2]) ~ Petal.Length + Petal.Width + Species, data = iris)
 #' average_loss(fit, X = iris, y = iris[1:2])
-#' average_loss(fit, X = iris, y = iris[1:2], loss = "gamma", BY = iris$Species)
+#' L <- average_loss(
+#'   fit, X = iris, y = iris[1:2], loss = "gamma", BY = "Species"
+#' )
+#' L
+#' plot(L)
 average_loss <- function(object, ...) {
   UseMethod("average_loss")
 }
@@ -60,20 +72,20 @@ average_loss <- function(object, ...) {
 #' @export
 average_loss.default <- function(object, X, y, 
                                  pred_fun = stats::predict,
-                                 BY = NULL, loss = "squared_error", w = NULL, ...) {
+                                 loss = "squared_error",
+                                 agg_cols = FALSE,
+                                 BY = NULL, by_size = 4L, 
+                                 w = NULL, ...) {
   stopifnot(
     is.matrix(X) || is.data.frame(X),
-    nrow(X) >= 1L,
-    is.function(pred_fun),
-    is.null(w) || length(w) == nrow(X),
-    NROW(y) == nrow(X)
+    is.function(pred_fun)
   )
+  y <- prepare_y(y = y, X = X)[["y"]]
+  if (!is.null(w)) {
+    w <- prepare_w(w = w, X = X)[["w"]]
+  }
   if (!is.null(BY)) {
-    stopifnot(
-      NCOL(BY) == 1L,
-      is.vector(BY) || is.factor(BY),
-      length(BY) == nrow(X)
-    )
+    BY <- prepare_by(BY = BY, X = X, by_size = by_size)[["BY"]]
   }
   if (!is.function(loss)) {
     loss <- get_loss_fun(loss)
@@ -81,21 +93,41 @@ average_loss.default <- function(object, X, y,
   
   # Real work
   L <- as.matrix(loss(y, pred_fun(object, X, ...)))
-  gwColMeans(L, g = BY, w = w)
+  M <- gwColMeans(L, g = BY, w = w)
+  
+  if (agg_cols && ncol(M) > 1L) {
+    M <- cbind(rowSums(M))
+  }
+  
+  structure(
+    list(
+      M = M, 
+      SE = NULL, 
+      mrep = NULL, 
+      statistic = "average_loss", 
+      description = "Average loss"
+    ), 
+    class = "hstats_matrix"
+  )
 }
 
 #' @describeIn average_loss Method for "ranger" models.
 #' @export
 average_loss.ranger <- function(object, X, y, 
                                 pred_fun = function(m, X, ...) stats::predict(m, X, ...)$predictions,
-                                BY = NULL, loss = "squared_error", w = NULL, ...) {
+                                loss = "squared_error",
+                                agg_cols = FALSE,
+                                BY = NULL, by_size = 4L, 
+                                w = NULL, ...) {
   average_loss.default(
     object = object, 
     X = X, 
     y = y, 
-    pred_fun = pred_fun, 
-    BY = BY, 
+    pred_fun = pred_fun,
     loss = loss, 
+    agg_cols = agg_cols,
+    BY = BY,
+    by_size = by_size,
     w = w, 
     ...
   )
@@ -103,9 +135,12 @@ average_loss.ranger <- function(object, X, y,
 
 #' @describeIn average_loss Method for "mlr3" models.
 #' @export
-average_loss.Learner <- function(object, v, X, y, 
+average_loss.Learner <- function(object, X, y, 
                                  pred_fun = NULL,
-                                 BY = NULL, loss = "squared_error", w = NULL, ...) {
+                                 loss = "squared_error",
+                                 agg_cols = FALSE,
+                                 BY = NULL, by_size = 4L, 
+                                 w = NULL, ...) {
   if (is.null(pred_fun)) {
     pred_fun <- mlr3_pred_fun(object, X = X)
   }
@@ -114,8 +149,10 @@ average_loss.Learner <- function(object, v, X, y,
     X = X, 
     y = y, 
     pred_fun = pred_fun, 
-    BY = BY, 
-    loss = loss, 
+    loss = loss,
+    agg_cols = agg_cols,
+    BY = BY,
+    by_size = by_size,
     w = w, 
     ...
   )
@@ -127,8 +164,10 @@ average_loss.explainer <- function(object,
                                    X = object[["data"]], 
                                    y = object[["y"]], 
                                    pred_fun = object[["predict_function"]],
+                                   loss = "squared_error",
+                                   agg_cols = FALSE,
                                    BY = NULL, 
-                                   loss = "squared_error", 
+                                   by_size = 4L,
                                    w = object[["weights"]], 
                                    ...) {
   average_loss.default(
@@ -136,8 +175,10 @@ average_loss.explainer <- function(object,
     X = X,
     y = y,
     pred_fun = pred_fun,
-    BY = BY,
     loss = loss,
+    agg_cols = agg_cols,
+    BY = BY,
+    by_size = by_size,
     w = w,
     ...
   )

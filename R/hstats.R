@@ -10,7 +10,9 @@
 #' - Friedman and Popescu's statistic \eqn{H^2_{jk}} of pairwise interaction strength,
 #'   see [h2_pairwise()] for details.
 #' - Friedman and Popescu's statistic \eqn{H^2_{jkl}} of three-way interaction strength,
-#'   see [h2_threeway()] for details.
+#'   see [h2_threeway()] for details. To save time, this statistic is not calculated
+#'   by default. Set `threeway_m` to a value above 2 to get three-way statistics of the
+#'   `threeway_m` variables with strongest overall interaction.
 #' 
 #' Furthermore, it allows to calculate an experimental partial dependence based
 #' measure of feature importance, \eqn{\textrm{PDI}_j^2}. It equals the proportion of
@@ -23,16 +25,14 @@
 #'  
 #' @param object Fitted model object.
 #' @param X A data.frame or matrix serving as background dataset.
-#' @param v Vector of feature names, by default `colnames(X)`.
+#' @param v Vector of feature names. The default (`NULL`) will use all column names of
+#'   `X` except the column name of the optional case weight `w` (if specified as name).
 #' @param pred_fun Prediction function of the form `function(object, X, ...)`,
 #'   providing \eqn{K \ge 1} predictions per row. Its first argument represents the 
 #'   model `object`, its second argument a data structure like `X`. Additional arguments 
 #'   (such as `type = "response"` in a GLM, or `reshape = TRUE` in a multiclass XGBoost
 #'   model) can be passed via `...`. The default, [stats::predict()], will work in 
 #'   most cases.
-#' @param n_max If `X` has more than `n_max` rows, a random sample of `n_max` rows is
-#'   selected from `X`. In this case, set a random seed for reproducibility.
-#' @param w Optional vector of case weights for each row of `X`.
 #' @param pairwise_m Number of features for which pairwise statistics are to be 
 #'   calculated. The features are selected based on Friedman and Popescu's overall 
 #'   interaction strength \eqn{H^2_j}. Set to to 0 to avoid pairwise calculations.
@@ -40,15 +40,28 @@
 #'   strongest variable names is taken. This can lead to very long run-times.
 #' @param threeway_m Like `pairwise_m`, but controls the feature count for 
 #'   three-way interactions. Cannot be larger than `pairwise_m`. 
-#'   The default is `min(pairwise_m, 5)`. Set to 0 to avoid three-way calculations.
+#'   To save computation time, the default is 0.
+#' @param approx Should quantile approximation be applied to dense numeric features?
+#'   The default is `FALSE`. Setting this option to `TRUE` brings a massive speed-up
+#'   for one-way calculations. It can, e.g., be used when the number of features is
+#'   very large.
+#' @param grid_size Integer controlling the number of quantile midpoints used to
+#'   approximate dense numerics. The quantile midpoints are calculated after
+#'   subampling via `n_max`. Only relevant if `approx = TRUE`.
+#' @param n_max If `X` has more than `n_max` rows, a random sample of `n_max` rows is
+#'   selected from `X`. In this case, set a random seed for reproducibility.
+#' @param eps Threshold below which numerator values are set to 0. Default is 1e-10.
+#' @param w Optional vector of case weights. Can also be a column name of `X`.
 #' @param verbose Should a progress bar be shown? The default is `TRUE`.
 #' @param ... Additional arguments passed to `pred_fun(object, X, ...)`, 
-#'   for instance `type = "response"` in a [glm()] model.
+#'   for instance `type = "response"` in a [glm()] model, or `reshape = TRUE` in a 
+#'   multiclass XGBoost model.
 #' @returns 
 #'   An object of class "hstats" containing these elements:
-#'   - `X`: Input `X` (sampled to `n_max` rows).
-#'   - `w`: Input `w` (sampled to `n_max` values, or `NULL`).
-#'   - `v`: Same as input `v`.
+#'   - `X`: Input `X` (sampled to `n_max` rows, after optional quantile approximation).
+#'   - `w`: Case weight vector `w` (sampled to `n_max` values), or `NULL`.
+#'   - `v`: Vector of column names in `X` for which overall 
+#'     H statistics have been calculated.
 #'   - `f`: Matrix with (centered) predictions \eqn{F}.
 #'   - `mean_f2`: (Weighted) column means of `f`. Used to normalize \eqn{H^2} and
 #'     \eqn{H^2_j}.
@@ -61,23 +74,28 @@
 #'   - `pairwise_m`: Like input `pairwise_m`, but capped at `length(v)`.
 #'   - `threeway_m`: Like input `threeway_m`, but capped at the smaller of 
 #'     `length(v)` and `pairwise_m`.
+#'   - `eps`: Like input `eps`.
+#'   - `pd_importance`: List with numerator and denominator of \eqn{\textrm{PDI}_j}.
 #'   - `h2`: List with numerator and denominator of \eqn{H^2}.
 #'   - `h2_overall`: List with numerator and denominator of \eqn{H^2_j}. 
 #'   - `v_pairwise`: Subset of `v` with largest \eqn{H^2_j} used for pairwise 
-#'     calculations.
+#'     calculations. Only if pairwise calculations have been done.
 #'   - `combs2`: Named list of variable pairs for which pairwise partial 
-#'     dependence functions are available.
+#'     dependence functions are available. Only if pairwise calculations have been done.
 #'   - `F_jk`: List of matrices, each representing (centered) bivariate 
 #'     partial dependence functions \eqn{F_{jk}}.
+#'     Only if pairwise calculations have been done.
 #'   - `h2_pairwise`: List with numerator and denominator of \eqn{H^2_{jk}}.
 #'     Only if pairwise calculations have been done.
 #'   - `v_threeway`: Subset of `v` with largest `h2_overall()` used for three-way 
-#'     calculations.
+#'     calculations. Only if three-way calculations have been done.
 #'   - `combs3`: Named list of variable triples for which three-way partial 
-#'     dependence functions are available.
+#'     dependence functions are available. Only if three-way calculations have been done.
 #'   - `F_jkl`: List of matrices, each representing (centered) three-way 
 #'     partial dependence functions \eqn{F_{jkl}}.
-#'   - `h2_threeway`: List with numerator and denominator of \eqn{H^2_{jkl}}.
+#'     Only if three-way calculations have been done.
+#'   - `h2_threeway`: List with numerator and denominator of \eqn{H^2_{jkl}}. 
+#'     Only if three-way calculations have been done.
 #' @references
 #'   Friedman, Jerome H., and Bogdan E. Popescu. *"Predictive Learning via Rule Ensembles."*
 #'     The Annals of Applied Statistics 2, no. 3 (2008): 916-54.
@@ -94,7 +112,7 @@
 #' summary(s)
 #'   
 #' # Absolute pairwise interaction strengths
-#' h2_pairwise(s, normalize = FALSE, squared = FALSE, plot = FALSE, zero = FALSE)
+#' h2_pairwise(s, normalize = FALSE, squared = FALSE, zero = FALSE)
 #' 
 #' # MODEL 2: Multi-response linear regression
 #' fit <- lm(as.matrix(iris[1:2]) ~ Petal.Length + Petal.Width * Species, data = iris)
@@ -109,24 +127,47 @@
 #' s <- hstats(fit, X = iris[-1], verbose = FALSE)
 #' summary(s)
 #' 
-#' # On original scale, we have interactions everywhere...
-#' s <- hstats(fit, X = iris[-1], type = "response", verbose = FALSE)
-#' plot(s, which = 1:3, ncol = 1)  # All three types use different denominators
+#' # On original scale, we have interactions everywhere. 
+#' # To see three-way interactions, we set threeway_m to a value above 2.
+#' s <- hstats(fit, X = iris[-1], type = "response", threeway_m = 5)
+#' plot(s, ncol = 1)  # All three types use different denominators
 #' 
 #' # All statistics on same scale (of predictions)
-#' plot(s, which = 1:3, squared = FALSE, normalize = FALSE, facet_scale = "free_y")
+#' plot(s, squared = FALSE, normalize = FALSE, facet_scale = "free_y")
 hstats <- function(object, ...) {
   UseMethod("hstats")
 }
 
 #' @describeIn hstats Default hstats method.
 #' @export
-hstats.default <- function(object, X, v = colnames(X),
-                           pred_fun = stats::predict, n_max = 300L, 
-                           w = NULL, pairwise_m = 5L, 
-                           threeway_m = min(pairwise_m, 5L),
-                           verbose = TRUE, ...) {
-  basic_check(X = X, v = v, pred_fun = pred_fun, w = w)
+hstats.default <- function(object, X, v = NULL,
+                           pred_fun = stats::predict, 
+                           pairwise_m = 5L, threeway_m = 0L,
+                           approx = FALSE, grid_size = 50L, 
+                           n_max = 500L, eps = 1e-10, 
+                           w = NULL, verbose = TRUE, ...) {
+  stopifnot(
+    is.matrix(X) || is.data.frame(X),
+    is.function(pred_fun)
+  )
+  
+  # Is w a column name or a vector?
+  if (!is.null(w)) {
+    w2 <- prepare_w(w = w, X = X)
+    w <- w2[["w"]]
+    w_name <- w2[["w_name"]]
+  }
+  
+  # Determine missing v or check consistency with X
+  if (is.null(v)) {
+    v <- colnames(X)
+    if (!is.null(w) && !is.null(w_name)) {
+      v <- setdiff(v, w_name)
+    }
+  } else {
+    stopifnot(all(v %in% colnames(X)))
+  }
+  
   p <- length(v)
   stopifnot(p >= 2L)
   pairwise_m <- min(pairwise_m, p)
@@ -139,6 +180,11 @@ hstats.default <- function(object, X, v = colnames(X),
     if (!is.null(w)) {
       w <- w[ix]
     }
+  }
+  
+  # Quantile approximation to speedup things for dense features
+  if (isTRUE(approx)) {
+    X <- approx_matrix_or_df(X = X, v = v, m = grid_size)
   }
   
   # Predictions ("F" in Friedman and Popescu) always calculated (cheap)
@@ -197,13 +243,15 @@ hstats.default <- function(object, X, v = colnames(X),
     K = ncol(f),
     pred_names = colnames(f),
     pairwise_m = pairwise_m,
-    threeway_m = threeway_m
+    threeway_m = threeway_m,
+    eps = eps
   )
   
   # 0-way and 1-way stats
+  out[["pd_importance"]] <- pd_importance_raw(out)
   out[["h2"]] <- h2_raw(out)
   out[["h2_overall"]] <- h2_overall_raw(out)
-  h2_ov <- .zap_small(out$h2_overall$num, eps = 1e-8)  # Does eps need to be passed?
+  h2_ov <- out$h2_overall$num
   
   if (pairwise_m >= 2L) {
     out[["v_pairwise"]] <- v2 <- get_v(h2_ov, m = pairwise_m)
@@ -229,20 +277,24 @@ hstats.default <- function(object, X, v = colnames(X),
 
 #' @describeIn hstats Method for "ranger" models.
 #' @export
-hstats.ranger <- function(object, X, v = colnames(X),
+hstats.ranger <- function(object, X, v = NULL,
                           pred_fun = function(m, X, ...) stats::predict(m, X, ...)$predictions,
-                          n_max = 300L, w = NULL, pairwise_m = 5L, 
-                          threeway_m = min(pairwise_m, 5L),
-                          verbose = TRUE, ...) {
+                          pairwise_m = 5L, threeway_m = 0L,
+                          approx = FALSE, grid_size = 50L, 
+                          n_max = 500L, eps = 1e-10,
+                          w = NULL, verbose = TRUE, ...) {
   hstats.default(
     object = object,
     X = X,
     v = v,
     pred_fun = pred_fun,
-    n_max = n_max,
-    w = w,
     pairwise_m = pairwise_m,
     threeway_m = threeway_m,
+    approx = approx,
+    grid_size = grid_size,
+    n_max = n_max,
+    eps = eps,
+    w = w,
     verbose = verbose,
     ...
   )
@@ -250,11 +302,12 @@ hstats.ranger <- function(object, X, v = colnames(X),
 
 #' @describeIn hstats Method for "mlr3" models.
 #' @export
-hstats.Learner <- function(object, X, v = colnames(X),
+hstats.Learner <- function(object, X, v = NULL,
                            pred_fun = NULL,
-                           n_max = 300L, w = NULL, pairwise_m = 5L,
-                           threeway_m = min(pairwise_m, 5L), 
-                           verbose = TRUE, ...) {
+                           pairwise_m = 5L, threeway_m = 0L, 
+                           approx = FALSE, grid_size = 50L, 
+                           n_max = 500L, eps = 1e-10, 
+                           w = NULL, verbose = TRUE, ...) {
   if (is.null(pred_fun)) {
     pred_fun <- mlr3_pred_fun(object, X = X)
   }
@@ -263,10 +316,13 @@ hstats.Learner <- function(object, X, v = colnames(X),
     X = X,
     v = v,
     pred_fun = pred_fun,
-    n_max = n_max,
-    w = w,
     pairwise_m = pairwise_m,
     threeway_m = threeway_m,
+    approx = approx,
+    grid_size = grid_size,
+    n_max = n_max,
+    eps = eps,
+    w = w,
     verbose = verbose,
     ...
   )
@@ -275,21 +331,24 @@ hstats.Learner <- function(object, X, v = colnames(X),
 #' @describeIn hstats Method for DALEX "explainer".
 #' @export
 hstats.explainer <- function(object, X = object[["data"]],
-                             v = colnames(X),
+                             v = NULL,
                              pred_fun = object[["predict_function"]],
-                             n_max = 300L, w = object[["weights"]], 
-                             pairwise_m = 5L, 
-                             threeway_m = min(pairwise_m, 5L),
-                             verbose = TRUE, ...) {
+                             pairwise_m = 5L, threeway_m = 0L,
+                             approx = FALSE, grid_size = 50L, 
+                             n_max = 500L, eps = 1e-10, 
+                             w = object[["weights"]], verbose = TRUE, ...) {
   hstats.default(
     object = object[["model"]],
     X = X,
     v = v,
     pred_fun = pred_fun,
-    n_max = n_max,
-    w = w,
     pairwise_m = pairwise_m,
     threeway_m = threeway_m,
+    approx = approx,
+    grid_size = grid_size,
+    n_max = n_max,
+    eps = eps,
+    w = w,
     verbose = verbose,
     ...
   )
@@ -306,72 +365,59 @@ hstats.explainer <- function(object, X = object[["data"]],
 #' @seealso See [hstats()] for examples.
 print.hstats <- function(x, ...) {
   cat("'hstats' object. Use plot() or summary() for details.\n\n")
-  cat("Proportion of prediction variability unexplained by main effects of v:\n")
   print(h2(x))
-  cat("\n")
   invisible(x)
 }
 
 #' Summary Method
 #' 
-#' Summary method for "hstats" object. Note that \eqn{H^2} is not affected by
-#' the arguments `normalize` and `squared`.
+#' Summary method for "hstats" object. Note that only the top 4 overall, the top 3 
+#' pairwise and the top 1 three-way statistics are shown.
 #'
 #' @inheritParams h2_overall
 #' @param ... Currently not used.
 #' @returns 
 #'   An object of class "summary_hstats" representing a named list with statistics
-#'   "h2", "h2_overall", "h2_pairwise", "h2_threeway", and the input flag "normalize".
-#'   Statistics that equal `NULL` are omitted from the list.
+#'   "h2", "h2_overall", "h2_pairwise", "h2_threeway", all of class "hstats_matrix".
 #' @export
 #' @seealso See [hstats()] for examples.
-summary.hstats <- function(object, normalize = TRUE, squared = TRUE, sort = TRUE, 
-                           top_m = Inf, zero = TRUE, eps = 1e-8, ...) {
+summary.hstats <- function(object, normalize = TRUE, squared = TRUE, 
+                           sort = TRUE, zero = TRUE, ...) {
   args <- list(
     object = object, 
     normalize = normalize, 
     squared = squared, 
     sort = sort,
-    top_m = top_m,
-    zero = zero,
-    eps = eps,
-    plot = FALSE
+    zero = zero
   )
   out <- list(
-    h2 = h2(object, normalize = normalize, squared = squared, eps = eps), 
+    h2 = do.call(h2, args), 
     h2_overall = do.call(h2_overall, args), 
     h2_pairwise = do.call(h2_pairwise, args), 
-    h2_threeway = do.call(h2_threeway, args),
-    normalize = normalize
+    h2_threeway = do.call(h2_threeway, args)
   )
-  out <- out[!sapply(out, is.null)]
-  structure(out, class = "summary_hstats")
+  structure(out, class = "hstats_summary")
 }
 
 #' Print Method
 #' 
-#' Print method for object of class "summary_hstats".
+#' Print method for object of class "hstats_summary".
 #'
-#' @param x An object of class "summary_hstats".
+#' @param x An object of class "hstats_summary".
 #' @param ... Further arguments passed from other methods.
 #' @returns Invisibly, the input is returned.
 #' @export
 #' @seealso See [hstats()] for examples.
-print.summary_hstats <- function(x, ...) {
-  flag <- if (x[["normalize"]]) "relative" else "absolute"
-
-  txt <- c(
-    h2 = "Prediction variability unexplained by main effects",
-    h2_overall = sprintf("Strongest %s overall interactions", flag), 
-    h2_pairwise = sprintf("Strongest %s pairwise interactions", flag),
-    h2_threeway = sprintf("Strongest %s three-way interaction", flag)
-  )
-  top_n <- c(h2 = 1L, h2_overall = 4L, h2_pairwise = 3L, h2_threeway = 1L)
+print.hstats_summary <- function(x, ...) {
+  m <- c(1L, 4L, 3L, 1L)
   
-  for (nm in setdiff(names(x), "normalize")) {
-    cat(txt[nm])
-    cat("\n")
-    print(utils::head(x[[nm]], top_n[nm]))
+  for (i in seq_along(x)) {
+    if (is.null(x[[i]]$M))
+      next
+    cat("*")
+    if (i >= 2L)
+      cat("Largest ")
+    print(x[[i]], top_m = m[i])
     cat("\n")
   }
   invisible(x)
@@ -382,63 +428,66 @@ print.summary_hstats <- function(x, ...) {
 #' Plot method for object of class "hstats".
 #'
 #' @param x Object of class "hstats".
-#' @param which Which statistic(s) to be shown? Default is `1:2`, i.e., show both
-#'   \eqn{H^2_j} (1) and \eqn{H^2_{jk}} (2). To also show three-way interactions,
-#'   use `1:3`.
-#' @param facet_scales Value passed to `ggplot2::facet_wrap(scales = ...)`.
-#' @param ncol Passed to `ggplot2::facet_wrap()`.
-#' @param rotate_x Should x axis labels be rotated by 45 degrees?
-#' @param ... Passed to [ggplot2::geom_bar()].
+#' @param which Which statistic(s) to be shown? Default is `1:3`, i.e., 
+#'   show \eqn{H^2_j} (1), \eqn{H^2_{jk}} (2), and \eqn{H^2_{jkl}} (3).
+#' @inheritParams plot.hstats_matrix
 #' @inheritParams h2_overall
 #' @returns An object of class "ggplot".
 #' @export
 #' @seealso See [hstats()] for examples.
-plot.hstats <- function(x, which = 1:2, normalize = TRUE, squared = TRUE, sort = TRUE, 
-                        top_m = 15L, zero = TRUE, eps = 1e-8, fill = "#2b51a1", 
+plot.hstats <- function(x, which = 1:3, normalize = TRUE, squared = TRUE, 
+                        sort = TRUE, top_m = 15L, zero = TRUE, 
+                        fill = getOption("hstats.fill"), 
+                        viridis_args = getOption("hstats.viridis_args"),
                         facet_scales = "free", ncol = 2L, rotate_x = FALSE, ...) {
-  su <- summary(
-    x, 
-    normalize = normalize, 
-    squared = squared, 
-    sort = sort, 
-    top_m = top_m,
-    zero = zero,
-    eps = eps
-  )
+  if (is.null(viridis_args)) {
+    viridis_args <- list()
+  }
   
+  su <- summary(x, normalize = normalize, squared = squared, sort = sort, zero = zero)
+  su <- su[sapply(su, FUN = function(z) !is.null(z[["M"]]))]
+
   # This part could be simplified, especially the "match()"
   stat_names <- c("h2_overall", "h2_pairwise", "h2_threeway")[which]
   stat_labs <- c("Overall", "Pairwise", "Three-way")[which]
   ok <- stat_names[stat_names %in% names(su)]
   if (length(ok) == 0L) {
+    message("Nothing to plot!")
     return(NULL)
   }
-  dat <- lapply(ok, FUN = function(nm) mat2df(su[[nm]], id = stat_labs[match(nm, stat_names)]))
+  dat <- lapply(
+    ok, 
+    FUN = function(nm) 
+      mat2df(utils::head(su[[nm]]$M, top_m), id = stat_labs[match(nm, stat_names)])
+  )
   dat <- do.call(rbind, dat)
+  dat <- barplot_reverter(dat)
   
   p <- ggplot2::ggplot(dat, ggplot2::aes(x = value_, y = variable_)) +
     ggplot2::ylab(ggplot2::element_blank()) +
-    ggplot2::xlab("Value")
+    ggplot2::xlab(su$h2$description)  # Generic enough?
   
-  if (length(unique(dat[["id_"]])) > 1L) {
+  if (x[["K"]] == 1L) {
+    p <- p + ggplot2::geom_bar(fill = fill, stat = "identity", ...)
+  } else {
     p <- p + 
-      ggplot2::facet_wrap(~ id_, ncol = ncol, scales = facet_scales)
+      ggplot2::geom_bar(
+        ggplot2::aes(fill = varying_), stat = "identity", position = "dodge", ...
+      ) + 
+      ggplot2::theme(legend.title = ggplot2::element_blank()) +
+      do.call(ggplot2::scale_fill_viridis_d, viridis_args) +
+      ggplot2::guides(fill = ggplot2::guide_legend(reverse = TRUE))
+  }
+  if (length(ok) > 1L) {
+    p <- p + ggplot2::facet_wrap(~ id_, ncol = ncol, scales = facet_scales)
   }
   if (rotate_x) {
     p <- p + rotate_x_labs()
   }
-  if (length(unique(dat[["varying_"]])) == 1L) {
-    p + ggplot2::geom_bar(fill = fill, stat = "identity", ...)
-  } else {
-    p + 
-      ggplot2::geom_bar(
-        ggplot2::aes(fill = varying_), stat = "identity", position = "dodge", ...
-      ) + 
-      ggplot2::labs(fill = "Dim")
-  }
+  p
 }
 
-# Helper functions used only in this script
+# Helper functions used only by hstats()
 
 #' Pairwise or 3-Way Partial Dependencies
 #' 
@@ -507,4 +556,3 @@ get_v <- function(H, m) {
   }
   v[v %in% v_cand]
 }
-

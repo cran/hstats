@@ -6,23 +6,41 @@
 \usage{
 \method{plot}{partial_dep}(
   x,
+  color = getOption("hstats.color"),
+  swap_dim = FALSE,
+  viridis_args = getOption("hstats.viridis_args"),
+  facet_scales = "fixed",
   rotate_x = FALSE,
-  color = "#2b51a1",
-  facet_scales = "free_y",
   show_points = TRUE,
+  d2_geom = c("tile", "point"),
   ...
 )
 }
 \arguments{
 \item{x}{An object of class "partial_dep".}
 
+\item{color}{Color of lines and points (in case there is no color/fill aesthetic).
+The default equals the global option \code{hstats.color = "#3b528b"}.
+To change the global option, use \verb{options(stats.color = new value)}.}
+
+\item{swap_dim}{Switches the role of grouping and facetting (default is \code{FALSE}).}
+
+\item{viridis_args}{List of viridis color scale arguments, see
+\verb{[ggplot2::scale_color_viridis_d()]}.
+The default points to the global option \code{hstats.viridis_args},
+which corresponds to \code{list(begin = 0.2, end = 0.8, option = "B")}.
+E.g., to switch to a standard viridis scale, you can change the default via
+\code{options(hstats.viridis_args = list())}, or set \code{viridis_args = list()}.}
+
+\item{facet_scales}{Value passed as \code{scales} argument to \verb{[ggplot2::facet_wrap()]}.}
+
 \item{rotate_x}{Should x axis labels be rotated by 45 degrees?}
 
-\item{color}{Color of lines and points (in case there is no color/fill aesthetic).}
+\item{show_points}{Logical flag indicating whether to show points (default) or not.
+No effect for 2D PDPs.}
 
-\item{facet_scales}{Value passed to \code{ggplot2::facet_wrap(scales = ...)}.}
-
-\item{show_points}{Logical flag indicating whether to show points (default) or not.}
+\item{d2_geom}{The geometry used for 2D PDPs, by default "tile". The other option is
+"point", which is useful, e.g., when the grid represents spatial points.}
 
 \item{...}{Arguments passed to geometries.}
 }

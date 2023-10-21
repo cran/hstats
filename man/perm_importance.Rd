@@ -14,15 +14,15 @@ perm_importance(object, ...)
   object,
   X,
   y,
-  v = colnames(X),
+  v = NULL,
   pred_fun = stats::predict,
   loss = "squared_error",
-  perms = 4L,
+  m_rep = 4L,
   agg_cols = FALSE,
   normalize = FALSE,
   n_max = 10000L,
   w = NULL,
-  verbose = FALSE,
+  verbose = TRUE,
   ...
 )
 
@@ -30,15 +30,15 @@ perm_importance(object, ...)
   object,
   X,
   y,
-  v = colnames(X),
+  v = NULL,
   pred_fun = function(m, X, ...) stats::predict(m, X, ...)$predictions,
   loss = "squared_error",
-  perms = 4L,
+  m_rep = 4L,
   agg_cols = FALSE,
   normalize = FALSE,
   n_max = 10000L,
   w = NULL,
-  verbose = FALSE,
+  verbose = TRUE,
   ...
 )
 
@@ -46,15 +46,15 @@ perm_importance(object, ...)
   object,
   X,
   y,
-  v = colnames(X),
+  v = NULL,
   pred_fun = NULL,
   loss = "squared_error",
-  perms = 4L,
+  m_rep = 4L,
   agg_cols = FALSE,
   normalize = FALSE,
   n_max = 10000L,
   w = NULL,
-  verbose = FALSE,
+  verbose = TRUE,
   ...
 )
 
@@ -62,15 +62,15 @@ perm_importance(object, ...)
   object,
   X = object[["data"]],
   y = object[["y"]],
-  v = colnames(X),
+  v = NULL,
   pred_fun = object[["predict_function"]],
   loss = "squared_error",
-  perms = 4L,
+  m_rep = 4L,
   agg_cols = FALSE,
   normalize = FALSE,
   n_max = 10000L,
   w = object[["weights"]],
-  verbose = FALSE,
+  verbose = TRUE,
   ...
 )
 }
@@ -78,13 +78,16 @@ perm_importance(object, ...)
 \item{object}{Fitted model object.}
 
 \item{...}{Additional arguments passed to \code{pred_fun(object, X, ...)},
-for instance \code{type = "response"} in a \code{\link[=glm]{glm()}} model.}
+for instance \code{type = "response"} in a \code{\link[=glm]{glm()}} model, or \code{reshape = TRUE} in a
+multiclass XGBoost model.}
 
 \item{X}{A data.frame or matrix serving as background dataset.}
 
-\item{y}{Vector/matrix of the response corresponding to \code{X}.}
+\item{y}{Vector/matrix of the response, or the corresponding column names in \code{X}.}
 
-\item{v}{Vector of feature names, or named list of feature groups.}
+\item{v}{Vector of feature names, or named list of feature groups.
+The default (\code{NULL}) will use all column names of \code{X} with the following exception:
+If \code{y} or \code{w} are passed  as column names, they are dropped.}
 
 \item{pred_fun}{Prediction function of the form \verb{function(object, X, ...)},
 providing \eqn{K \ge 1} predictions per row. Its first argument represents the
@@ -101,43 +104,47 @@ For "mlogloss", the response \code{y} can either be a dummy matrix or a discrete
 The latter case is handled via \code{model.matrix(~ as.factor(y) + 0)}.
 For "classification_error", both predictions and responses can be non-numeric.}
 
-\item{perms}{Number of permutations (default 4).}
+\item{m_rep}{Number of permutations (default 4).}
 
-\item{agg_cols}{Should multivariate losses be summed up? Default is \code{FALSE}.}
+\item{agg_cols}{Should multivariate losses be summed up? Default is \code{FALSE}.
+In combination with the squared error loss, \code{agg_cols = TRUE} gives
+the Brier score for (probabilistic) classification.}
 
 \item{normalize}{Should importance statistics be divided by average loss?
 Default is \code{FALSE}. If \code{TRUE}, an importance of 1 means that the average loss
-has doubled by shuffling that feature's column.}
+has been doubled by shuffling that feature's column.}
 
 \item{n_max}{If \code{X} has more than \code{n_max} rows, a random sample of \code{n_max} rows is
 selected from \code{X}. In this case, set a random seed for reproducibility.}
 
-\item{w}{Optional vector of case weights for each row of \code{X}.}
+\item{w}{Optional vector of case weights. Can also be a column name of \code{X}.}
 
 \item{verbose}{Should a progress bar be shown? The default is \code{TRUE}.}
 }
 \value{
-An object of class "perm_importance" containing these elements:
+An object of class "hstats_matrix" containing these elements:
 \itemize{
-\item \code{imp}: (p x d) matrix containing the sorted (average) importance values, i.e.,
-a row per feature (group) and a column per loss dimension.
-\item \code{SE}: (p x d) matrix with corresponding standard errors of \code{imp}.
-Multiply with \code{sqrt(perms)} to get standard deviations.
-\item \code{perf}: Average loss before shuffling.
-\item \code{v}: Same as input \code{v}.
-\item \code{perms}: Same as input \code{perms}.
+\item \code{M}: Matrix of statistics (one column per prediction dimension), or \code{NULL}.
+\item \code{SE}: Matrix with standard errors of \code{M}, or \code{NULL}.
+Multiply with \code{sqrt(m_rep)} to get \emph{standard deviations} instead.
+Currently, supported only for \code{\link[=perm_importance]{perm_importance()}}.
+\item \code{m_rep}: The number of repetitions behind standard errors \code{SE}, or \code{NULL}.
+Currently, supported only for \code{\link[=perm_importance]{perm_importance()}}.
+\item \code{statistic}: Name of the function that generated the statistic.
+\item \code{description}: Description of the statistic.
 }
 }
 \description{
 Calculates permutation importance for a set of features or a set of feature groups.
-By default, importance is calculated for all columns in \code{X}.
+By default, importance is calculated for all columns in \code{X} (except column names
+used as response \code{y} or case weight \code{w}).
 }
 \details{
 The permutation importance of a feature is defined as the increase in the average
 loss when shuffling the corresponding feature values before calculating predictions.
-By default, the process is repeated \code{perms = 4} times, and the results are averaged.
+By default, the process is repeated \code{m_rep = 4} times, and the results are averaged.
 In most of the cases, importance values should be derived from an independent test
-data set.
+data set. Set \code{normalize = TRUE} to get \emph{relative} increases in average loss.
 }
 \section{Methods (by class)}{
 \itemize{
@@ -184,24 +191,25 @@ vector or matrix of the same length as the input.
 \examples{
 # MODEL 1: Linear regression
 fit <- lm(Sepal.Length ~ ., data = iris)
-s <- perm_importance(fit, X = iris[-1], y = iris$Sepal.Length)
+s <- perm_importance(fit, X = iris, y = "Sepal.Length")
 s
-s$imp
+s$M
 s$SE  # Standard errors are available thanks to repeated shuffling
 plot(s)
-plot(s, err_type = "sd")  # Standard deviations instead of standard errors
+plot(s, err_type = "SD")  # Standard deviations instead of standard errors
 
 # Groups of features can be passed as named list
 v <- list(petal = c("Petal.Length", "Petal.Width"), species = "Species")
-s <- perm_importance(fit, X = iris, y = iris$Sepal.Length, v = v)
+s <- perm_importance(fit, X = iris, y = "Sepal.Length", v = v, verbose = FALSE)
 s
+plot(s)
 
 # MODEL 2: Multi-response linear regression
 fit <- lm(as.matrix(iris[1:2]) ~ Petal.Length + Petal.Width + Species, data = iris)
-s <- perm_importance(fit, X = iris[3:5], y = iris[1:2])
+s <- perm_importance(fit, X = iris[3:5], y = iris[1:2], normalize = TRUE)
 s
 plot(s)
-plot(s, rotate_x = TRUE, facet_scale = "free_x", err_type = "sd")
+plot(s, swap_dim = TRUE, top_m = 2)
 }
 \references{
 Fisher A., Rudin C., Dominici F. (2018). All Models are Wrong but many are Useful:

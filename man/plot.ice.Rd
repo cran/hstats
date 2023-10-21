@@ -8,9 +8,11 @@
   x,
   center = FALSE,
   alpha = 0.2,
-  rotate_x = FALSE,
-  color = "#2b51a1",
+  color = getOption("hstats.color"),
+  swap_dim = FALSE,
+  viridis_args = getOption("hstats.viridis_args"),
   facet_scales = "fixed",
+  rotate_x = FALSE,
   ...
 )
 }
@@ -21,13 +23,24 @@
 
 \item{alpha}{Transparency passed to \code{ggplot2::geom_line()}.}
 
+\item{color}{Color of lines and points (in case there is no color/fill aesthetic).
+The default equals the global option \code{hstats.color = "#3b528b"}.
+To change the global option, use \verb{options(stats.color = new value)}.}
+
+\item{swap_dim}{Swaps between color groups and facets. Default is \code{FALSE}.}
+
+\item{viridis_args}{List of viridis color scale arguments, see
+\verb{[ggplot2::scale_color_viridis_d()]}.
+The default points to the global option \code{hstats.viridis_args},
+which corresponds to \code{list(begin = 0.2, end = 0.8, option = "B")}.
+E.g., to switch to a standard viridis scale, you can change the default via
+\code{options(hstats.viridis_args = list())}, or set \code{viridis_args = list()}.}
+
+\item{facet_scales}{Value passed as \code{scales} argument to \verb{[ggplot2::facet_wrap()]}.}
+
 \item{rotate_x}{Should x axis labels be rotated by 45 degrees?}
 
-\item{color}{Color of lines and points (in case there is no color/fill aesthetic).}
-
-\item{facet_scales}{Value passed to \code{ggplot2::facet_wrap(scales = ...)}.}
-
-\item{...}{Arguments passed to geometries.}
+\item{...}{Passed to \code{\link[ggplot2:geom_bar]{ggplot2::geom_bar()}}.}
 }
 \value{
 An object of class "ggplot".

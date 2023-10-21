@@ -21,6 +21,7 @@ partial_dep(object, ...)
   grid_size = 49L,
   trim = c(0.01, 0.99),
   strategy = c("uniform", "quantile"),
+  na.rm = TRUE,
   n_max = 1000L,
   w = NULL,
   ...
@@ -37,6 +38,7 @@ partial_dep(object, ...)
   grid_size = 49L,
   trim = c(0.01, 0.99),
   strategy = c("uniform", "quantile"),
+  na.rm = TRUE,
   n_max = 1000L,
   w = NULL,
   ...
@@ -53,6 +55,7 @@ partial_dep(object, ...)
   grid_size = 49L,
   trim = c(0.01, 0.99),
   strategy = c("uniform", "quantile"),
+  na.rm = TRUE,
   n_max = 1000L,
   w = NULL,
   ...
@@ -69,6 +72,7 @@ partial_dep(object, ...)
   grid_size = 49L,
   trim = c(0.01, 0.99),
   strategy = c("uniform", "quantile"),
+  na.rm = TRUE,
   n_max = 1000L,
   w = object[["weights"]],
   ...
@@ -78,9 +82,11 @@ partial_dep(object, ...)
 \item{object}{Fitted model object.}
 
 \item{...}{Additional arguments passed to \code{pred_fun(object, X, ...)},
-for instance \code{type = "response"} in a \code{\link[=glm]{glm()}} model.}
+for instance \code{type = "response"} in a \code{\link[=glm]{glm()}} model, or \code{reshape = TRUE} in a
+multiclass XGBoost model.}
 
-\item{v}{Vector of feature names, by default \code{colnames(X)}.}
+\item{v}{One or more column names over which you want to calculate the partial
+dependence.}
 
 \item{X}{A data.frame or matrix serving as background dataset.}
 
@@ -91,12 +97,13 @@ model \code{object}, its second argument a data structure like \code{X}. Additio
 model) can be passed via \code{...}. The default, \code{\link[stats:predict]{stats::predict()}}, will work in
 most cases.}
 
-\item{BY}{Optional grouping vector or a column name. The partial dependence
+\item{BY}{Optional grouping vector or column name. The partial dependence
 function is calculated per \code{BY} group. Each \code{BY} group
 uses the same evaluation grid to improve assessment of (non-)additivity.
 Numeric \code{BY} variables with more than \code{by_size} disjoint values will be
-binned into \code{by_size} quantile groups of similar size. Subsampling of \code{X} is done
-within group to improve robustness.}
+binned into \code{by_size} quantile groups of similar size. To improve robustness,
+subsampling of \code{X} is done within group. This only applies to \code{BY} groups with
+more than \code{n_max} rows.}
 
 \item{by_size}{Numeric \code{BY} variables with more than \code{by_size} unique values will
 be binned into quantile groups. Only relevant if \code{BY} is not \code{NULL}.}
@@ -114,10 +121,12 @@ of grid values. Set to \code{0:1} for no trimming.}
 \item{strategy}{How to find grid values of non-discrete numeric columns?
 Either "uniform" or "quantile", see description of \code{\link[=univariate_grid]{univariate_grid()}}.}
 
+\item{na.rm}{Should missing values be dropped from grid? Default is \code{TRUE}.}
+
 \item{n_max}{If \code{X} has more than \code{n_max} rows, a random sample of \code{n_max} rows is
 selected from \code{X}. In this case, set a random seed for reproducibility.}
 
-\item{w}{Optional vector of case weights for each row of \code{X}.}
+\item{w}{Optional vector of case weights. Can also be a column name of \code{X}.}
 }
 \value{
 An object of class "partial_dep" containing these elements:
@@ -193,17 +202,19 @@ plot(pd, rotate_x = TRUE)
 
 # MODEL 2: Multi-response linear regression
 fit <- lm(as.matrix(iris[1:2]) ~ Petal.Length + Petal.Width * Species, data = iris)
-pd <- partial_dep(fit, v = "Petal.Width", X = iris, BY = iris$Species)
+pd <- partial_dep(fit, v = "Petal.Width", X = iris, BY = "Species")
 plot(pd, show_points = FALSE)
 plot(partial_dep(fit, v = c("Species", "Petal.Width"), X = iris), rotate_x = TRUE)
 
 # Multivariate, multivariable, and BY (no plot available)
-pd <- partial_dep(fit, v = c("Petal.Width", "Petal.Length"), X = iris, BY = "Species")
+pd <- partial_dep(
+  fit, v = c("Petal.Width", "Petal.Length"), X = iris, BY = "Species"
+)
 pd
 
 # MODEL 3: Gamma GLM -> pass options to predict() via ...
 fit <- glm(Sepal.Length ~ ., data = iris, family = Gamma(link = log))
-plot(partial_dep(fit, v = "Petal.Length", X = iris))
+plot(partial_dep(fit, v = "Petal.Length", X = iris), show_points = FALSE)
 plot(partial_dep(fit, v = "Petal.Length", X = iris, type = "response"))
 }
 \references{

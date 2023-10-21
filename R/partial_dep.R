@@ -29,16 +29,19 @@
 #' A partial dependence plot (PDP) plots the values of \eqn{\hat F_s(\mathbf{x}_s)}
 #' over a grid of evaluation points \eqn{\mathbf{x}_s}.
 #' 
-#' @inheritParams hstats
 #' @inheritParams multivariate_grid
+#' @inheritParams hstats
+#' @param v One or more column names over which you want to calculate the partial
+#'   dependence.
 #' @param grid Evaluation grid. A vector (if `length(v) == 1L`), or a matrix/data.frame 
 #'   otherwise. If `NULL`, calculated via [multivariate_grid()].
-#' @param BY Optional grouping vector or a column name. The partial dependence
+#' @param BY Optional grouping vector or column name. The partial dependence
 #'   function is calculated per `BY` group. Each `BY` group
 #'   uses the same evaluation grid to improve assessment of (non-)additivity.
 #'   Numeric `BY` variables with more than `by_size` disjoint values will be 
-#'   binned into `by_size` quantile groups of similar size. Subsampling of `X` is done
-#'   within group to improve robustness.
+#'   binned into `by_size` quantile groups of similar size. To improve robustness,
+#'   subsampling of `X` is done within group. This only applies to `BY` groups with
+#'   more than `n_max` rows.
 #' @param by_size Numeric `BY` variables with more than `by_size` unique values will
 #'   be binned into quantile groups. Only relevant if `BY` is not `NULL`.
 #' @returns 
@@ -73,17 +76,19 @@
 #' 
 #' # MODEL 2: Multi-response linear regression
 #' fit <- lm(as.matrix(iris[1:2]) ~ Petal.Length + Petal.Width * Species, data = iris)
-#' pd <- partial_dep(fit, v = "Petal.Width", X = iris, BY = iris$Species)
+#' pd <- partial_dep(fit, v = "Petal.Width", X = iris, BY = "Species")
 #' plot(pd, show_points = FALSE)
 #' plot(partial_dep(fit, v = c("Species", "Petal.Width"), X = iris), rotate_x = TRUE)
 #' 
 #' # Multivariate, multivariable, and BY (no plot available)
-#' pd <- partial_dep(fit, v = c("Petal.Width", "Petal.Length"), X = iris, BY = "Species")
+#' pd <- partial_dep(
+#'   fit, v = c("Petal.Width", "Petal.Length"), X = iris, BY = "Species"
+#' )
 #' pd
 #' 
 #' # MODEL 3: Gamma GLM -> pass options to predict() via ...
 #' fit <- glm(Sepal.Length ~ ., data = iris, family = Gamma(link = log))
-#' plot(partial_dep(fit, v = "Petal.Length", X = iris))
+#' plot(partial_dep(fit, v = "Petal.Length", X = iris), show_points = FALSE)
 #' plot(partial_dep(fit, v = "Petal.Length", X = iris, type = "response"))
 partial_dep <- function(object, ...) {
   UseMethod("partial_dep")
@@ -94,60 +99,51 @@ partial_dep <- function(object, ...) {
 partial_dep.default <- function(object, v, X, pred_fun = stats::predict, 
                                 BY = NULL, by_size = 4L, grid = NULL, grid_size = 49L, 
                                 trim = c(0.01, 0.99), 
-                                strategy = c("uniform", "quantile"), n_max = 1000L, 
-                                w = NULL, ...) {
-  basic_check(X = X, v = v, pred_fun = pred_fun, w = w)
+                                strategy = c("uniform", "quantile"), na.rm = TRUE,
+                                n_max = 1000L, w = NULL, ...) {
+  stopifnot(
+    is.matrix(X) || is.data.frame(X),
+    is.function(pred_fun),
+    all(v %in% colnames(X))
+  )
   
   # Care about grid
   if (is.null(grid)) {
     grid <- multivariate_grid(
-      x = X[, v], grid_size = grid_size, trim = trim, strategy = strategy
+      x = X[, v], grid_size = grid_size, trim = trim, strategy = strategy, na.rm = na.rm
     )
   } else {
     check_grid(g = grid, v = v, X_is_matrix = is.matrix(X))
   }
   
+  if (!is.null(w)) {
+    w <- prepare_w(w = w, X = X)[["w"]]
+  }
+  
   # The function itself is called per BY group
   if (!is.null(BY)) {
-    if (length(BY) == 1L && BY %in% colnames(X)) {
-      by_name <- BY
-      BY <- X[, by_name]
-    } else {
-      stopifnot(
-        NCOL(BY) == 1L,
-        is.vector(BY) || is.factor(BY),
-        length(BY) == nrow(X)
-      )
-      by_name <- "Group"
-    }
-    
-    # Binning
-    by_values <- unique(BY)
-    if (is.numeric(BY) && length(by_values) > by_size) {
-      BY <- qcut(BY, m = by_size)
-      by_values <- unique(BY)
-    }
-    
-    pd_list <- vector("list", length = length(by_values))
-    for (i in seq_along(by_values)) {
-      b <- by_values[i]
+    BY2 <- prepare_by(BY = BY, X = X, by_size = by_size)
+    mm <- length(BY2$by_values)
+    pd_list <- vector("list", length = mm)
+    for (i in seq_len(mm)) {
+      b <- BY2$by_values[i]
       out <- partial_dep.default(
         object = object, 
         v = v, 
-        X = X[BY %in% b, , drop = FALSE], 
+        X = X[BY2$BY %in% b, , drop = FALSE],  # works also when by is NA
         pred_fun = pred_fun,
         grid = grid,
         n_max = n_max, 
-        w = if (!is.null(w)) w[BY %in% b],
+        w = if (!is.null(w)) w[BY2$BY %in% b],
         ...
       )
       pd_list[[i]] <- out[["data"]]
     }
     pd <- do.call(rbind, c(pd_list, list(make.row.names = FALSE)))
-    BY_rep <- rep(by_values, each = NROW(grid))
-    BY_rep <- stats::setNames(as.data.frame(BY_rep), by_name)
+    BY_rep <- rep(BY2$by_values, each = NROW(grid))
+    BY_rep <- stats::setNames(as.data.frame(BY_rep), BY2$by_name)
     out[["data"]] <- cbind.data.frame(BY_rep, pd)
-    out[["by_name"]] <- by_name
+    out[["by_name"]] <- BY2$by_name
     
     return(structure(out, class = "partial_dep"))
   }
@@ -189,8 +185,8 @@ partial_dep.ranger <- function(object, v, X,
                                pred_fun = function(m, X, ...) stats::predict(m, X, ...)$predictions,
                                BY = NULL, by_size = 4L, grid = NULL, grid_size = 49L, 
                                trim = c(0.01, 0.99), 
-                               strategy = c("uniform", "quantile"), n_max = 1000L, 
-                               w = NULL, ...) {
+                               strategy = c("uniform", "quantile"), na.rm = TRUE,
+                               n_max = 1000L, w = NULL, ...) {
   partial_dep.default(
     object = object,
     v = v,
@@ -202,6 +198,7 @@ partial_dep.ranger <- function(object, v, X,
     grid_size = grid_size,
     trim = trim,
     strategy = strategy,
+    na.rm = na.rm,
     n_max = n_max,
     w = w,
     ...
@@ -214,8 +211,8 @@ partial_dep.Learner <- function(object, v, X,
                                 pred_fun = NULL,
                                 BY = NULL, by_size = 4L, grid = NULL, grid_size = 49L, 
                                 trim = c(0.01, 0.99), 
-                                strategy = c("uniform", "quantile"), n_max = 1000L, 
-                                w = NULL, ...) {
+                                strategy = c("uniform", "quantile"), na.rm = TRUE,
+                                n_max = 1000L, w = NULL, ...) {
   if (is.null(pred_fun)) {
     pred_fun <- mlr3_pred_fun(object, X = X)
   }
@@ -230,6 +227,7 @@ partial_dep.Learner <- function(object, v, X,
     grid_size = grid_size,
     trim = trim,
     strategy = strategy,
+    na.rm = na.rm,
     n_max = n_max,
     w = w,
     ...
@@ -242,8 +240,8 @@ partial_dep.explainer <- function(object, v, X = object[["data"]],
                                   pred_fun = object[["predict_function"]],
                                   BY = NULL, by_size = 4L, grid = NULL, grid_size = 49L, 
                                   trim = c(0.01, 0.99), 
-                                  strategy = c("uniform", "quantile"), n_max = 1000L, 
-                                  w = object[["weights"]], ...) {
+                                  strategy = c("uniform", "quantile"), na.rm = TRUE,
+                                  n_max = 1000L, w = object[["weights"]], ...) {
   partial_dep.default(
     object = object[["model"]],
     v = v,
@@ -255,6 +253,7 @@ partial_dep.explainer <- function(object, v, X = object[["data"]],
     grid_size = grid_size,
     trim = trim,
     strategy = strategy,
+    na.rm = na.rm,
     n_max = n_max,
     w = w,
     ...
@@ -266,7 +265,7 @@ partial_dep.explainer <- function(object, v, X = object[["data"]],
 #' Print method for object of class "partial_dep".
 #'
 #' @param x An object of class "partial_dep".
-#' @param n Number of rows of partial dependencies to show.
+#' @param n Number of rows to print.
 #' @param ... Further arguments passed from other methods.
 #' @returns Invisibly, the input is returned.
 #' @export
@@ -284,16 +283,25 @@ print.partial_dep <- function(x, n = 3L, ...) {
 #' 
 #' @importFrom ggplot2 .data
 #' @param x An object of class "partial_dep".
-#' @param rotate_x Should x axis labels be rotated by 45 degrees?
 #' @param color Color of lines and points (in case there is no color/fill aesthetic).
-#' @param facet_scales Value passed to `ggplot2::facet_wrap(scales = ...)`.
+#'   The default equals the global option `hstats.color = "#3b528b"`. 
+#'   To change the global option, use `options(stats.color = new value)`.
 #' @param show_points Logical flag indicating whether to show points (default) or not.
+#'   No effect for 2D PDPs.
+#' @param d2_geom The geometry used for 2D PDPs, by default "tile". The other option is
+#'   "point", which is useful, e.g., when the grid represents spatial points.
 #' @param ... Arguments passed to geometries.
+#' @inheritParams plot.hstats_matrix
 #' @export
 #' @returns An object of class "ggplot".
 #' @seealso See [partial_dep()] for examples.
-plot.partial_dep <- function(x, rotate_x = FALSE, color = "#2b51a1", 
-                             facet_scales = "free_y", show_points = TRUE, ...) {
+plot.partial_dep <- function(x,
+                             color = getOption("hstats.color"),
+                             swap_dim = FALSE,
+                             viridis_args = getOption("hstats.viridis_args"),
+                             facet_scales = "fixed",
+                             rotate_x = FALSE, show_points = TRUE, 
+                             d2_geom = c("tile", "point"), ...) {
   v <- x[["v"]]
   by_name <- x[["by_name"]]
   K <- x[["K"]]
@@ -303,45 +311,68 @@ plot.partial_dep <- function(x, rotate_x = FALSE, color = "#2b51a1",
   if ((K > 1L) + (!is.null(by_name)) + length(v) > 3L) {
     stop("No plot implemented for this case.")
   }
-  data <- with(x, poor_man_stack(data, to_stack = pred_names))
+  if (is.null(viridis_args)) {
+    viridis_args <- list()
+  }
   
-  # Line plots
+  data <- with(x, poor_man_stack(data, to_stack = pred_names))
+
+  wrp <- NULL
   if (length(v) == 1L) {
+    # Line plots
+    grp <- if (is.null(by_name) && K > 1L) "varying_" else by_name  # can be NULL
+    wrp <- if (!is.null(by_name) && K > 1L) "varying_"
+    if (swap_dim) {
+      tmp <- grp
+      grp <- wrp
+      wrp <- tmp
+    }
     p <- ggplot2::ggplot(data, ggplot2::aes(x = .data[[v]], y = value_)) +
       ggplot2::labs(x = v, y = "PD")
-    
-    if (is.null(by_name)) {
+
+    if (is.null(grp)) {
       p <- p + ggplot2::geom_line(color = color, group = 1, ...)
       if (show_points) {
-        p <- p + ggplot2::geom_point(color = color, ...)
+        p <- p + ggplot2::geom_point(color = color)
       }
     } else {
       p <- p + 
         ggplot2::geom_line(
-          ggplot2::aes(color = .data[[by_name]], group = .data[[by_name]]), ...
+          ggplot2::aes(color = .data[[grp]], group = .data[[grp]]), ...
         ) +
-        ggplot2::labs(color = by_name)
+        ggplot2::labs(color = grp) +
+        do.call(get_color_scale(data[[grp]]), viridis_args)
       if (show_points) {
         p <- p + ggplot2::geom_point(
-          ggplot2::aes(color = .data[[by_name]], group = .data[[by_name]]), ...
+          ggplot2::aes(color = .data[[grp]], group = .data[[grp]])
         )
       }
-    }
-    if (K > 1L) {
-      p <- p + ggplot2::facet_wrap(~ varying_, scales = facet_scales)
+      if (grp == "varying_") {
+        p <- p + ggplot2::theme(legend.title = ggplot2::element_blank())
+      }
     }
   } else if (length(v) == 2L) {
     # Heat maps
-    p <- ggplot2::ggplot(
-      data, ggplot2::aes(x = .data[[v[1L]]], y = .data[[v[2L]]], fill = value_)
-    ) + 
-      ggplot2::geom_tile(...) +
-      ggplot2::labs(fill = "PD")
-    
+    d2_geom <- match.arg(d2_geom)
     if (K > 1L || !is.null(by_name)) {  # Only one is possible
       wrp <- if (K > 1L) "varying_" else by_name
-      p <- p + ggplot2::facet_wrap(wrp, scales = facet_scales)
+    }
+    p <- ggplot2::ggplot(data, ggplot2::aes(x = .data[[v[1L]]], y = .data[[v[2L]]]))
+    if (d2_geom == "tile") {
+      p <- p + ggplot2::geom_tile(ggplot2::aes(fill = value_), ...) +
+        do.call(ggplot2::scale_fill_viridis_c, viridis_args) + 
+        ggplot2::labs(fill = "PD")
+    } else if (d2_geom == "point") {
+      p <- p + ggplot2::geom_point(ggplot2::aes(color = value_), ...) +
+        do.call(ggplot2::scale_color_viridis_c, viridis_args) + 
+        ggplot2::labs(color = "PD")
     }
   }
-  if (rotate_x) p + rotate_x_labs() else p
+  if (!is.null(wrp)) {
+    p <- p + ggplot2::facet_wrap(wrp, scales = facet_scales)
+  }
+  if (rotate_x) {
+    p <- p + rotate_x_labs()
+  }
+  p
 }

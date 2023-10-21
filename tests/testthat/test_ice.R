@@ -168,7 +168,11 @@ test_that("Plots give 'ggplot' objects", {
   
   # One v, no by, multivariate
   expect_s3_class(
-    plot(ice(fit, v = "Species", X = iris2), color = "red"), 
+    plot(ice(fit, v = "Species", X = iris2)), 
+    "ggplot"
+  )
+  expect_s3_class(
+    plot(ice(fit, v = "Species", X = iris2), swap_dim = TRUE), 
     "ggplot"
   )
   
@@ -177,13 +181,14 @@ test_that("Plots give 'ggplot' objects", {
     plot(ice(fit, v = "Species", X = iris2), center = TRUE), 
     "ggplot"
   )
+  expect_s3_class(
+    plot(ice(fit, v = "Species", X = iris2), center = TRUE, swap_dim = TRUE), 
+    "ggplot"
+  )
   
   # One v, one by, multivariate
   expect_s3_class(
-    plot(
-      ice(fit, v = "Species", X = iris2, BY = "Petal.Width"), 
-      facet_scales = "fixed"
-    ), 
+    plot(ice(fit, v = "Species", X = iris2, BY = "Petal.Width")), 
     "ggplot"
   )
   
@@ -192,3 +197,42 @@ test_that("Plots give 'ggplot' objects", {
   expect_error(plot(ic, facet_scales = "fixed"))
 })
 
+# Some tests with missing values
+X <- data.frame(x1 = 1:6, x2 = c(NA, 1, 2, 1, 1, 3), x3 = factor(c("A", NA, NA, "B", "A", "A")))
+y <- 1:6
+pf <- function(fit, x) x$x1
+fit <- "a model"
+
+test_that("ice() works when non-v variable contains missing", {
+  set.seed(1L)
+  expect_no_error(r <- ice(fit, v = "x1", X = X, pred_fun = pf))
+  expect_equal(r$data$x1, r$data$y)
+})
+
+test_that("ice() works when v contains missing", {
+  expect_no_error(r1 <- ice(fit, v = "x2", X = X, pred_fun = pf))
+  expect_true(!anyNA(r1$data$x2))
+  
+  expect_no_error(r2 <- ice(fit, v = "x2", X = X, pred_fun = pf, na.rm = FALSE))
+  expect_true(anyNA(r2$data$x2))
+  
+  expect_equal(r1$data[1:3, ], r2$data[1:3, ])
+  expect_s3_class(plot(r2, alpha = 1), "ggplot")
+})
+
+test_that("ice() works when v contains missing (multivariate)", {
+  v <- c("x2", "x3")
+  
+  expect_no_error(r1 <- ice(fit, v = v, X = X, pred_fun = pf))
+  expect_true(!anyNA(r1$data$x2))
+  
+  expect_no_error(r2 <- ice(fit, v = v, X = X, pred_fun = pf, na.rm = FALSE))
+  expect_true(anyNA(r2$data$x2))
+})
+
+test_that("ice() works with missing value in BY", {
+  expect_true(anyNA(ice(fit, v = "x1", X = X, pred_fun = pf, BY = "x3")$data$x3))
+  r <- ice(fit, v = "x2", X = X, pred_fun = pf, BY = "x3")
+  expect_true(anyNA(r$data$x3))
+  expect_s3_class(plot(r), "ggplot")
+})

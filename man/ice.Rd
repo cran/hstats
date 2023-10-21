@@ -20,6 +20,7 @@ ice(object, ...)
   grid_size = 49L,
   trim = c(0.01, 0.99),
   strategy = c("uniform", "quantile"),
+  na.rm = TRUE,
   n_max = 100L,
   ...
 )
@@ -34,7 +35,8 @@ ice(object, ...)
   grid_size = 49L,
   trim = c(0.01, 0.99),
   strategy = c("uniform", "quantile"),
-  n_max = 100,
+  na.rm = TRUE,
+  n_max = 100L,
   ...
 )
 
@@ -48,6 +50,7 @@ ice(object, ...)
   grid_size = 49L,
   trim = c(0.01, 0.99),
   strategy = c("uniform", "quantile"),
+  na.rm = TRUE,
   n_max = 100L,
   ...
 )
@@ -62,7 +65,8 @@ ice(object, ...)
   grid_size = 49L,
   trim = c(0.01, 0.99),
   strategy = c("uniform", "quantile"),
-  n_max = 100,
+  na.rm = TRUE,
+  n_max = 100L,
   ...
 )
 }
@@ -70,9 +74,10 @@ ice(object, ...)
 \item{object}{Fitted model object.}
 
 \item{...}{Additional arguments passed to \code{pred_fun(object, X, ...)},
-for instance \code{type = "response"} in a \code{\link[=glm]{glm()}} model.}
+for instance \code{type = "response"} in a \code{\link[=glm]{glm()}} model, or \code{reshape = TRUE} in a
+multiclass XGBoost model.}
 
-\item{v}{Vector of feature names, by default \code{colnames(X)}.}
+\item{v}{One or more column names over which you want to calculate the ICE.}
 
 \item{X}{A data.frame or matrix serving as background dataset.}
 
@@ -101,6 +106,8 @@ of grid values. Set to \code{0:1} for no trimming.}
 
 \item{strategy}{How to find grid values of non-discrete numeric columns?
 Either "uniform" or "quantile", see description of \code{\link[=univariate_grid]{univariate_grid()}}.}
+
+\item{na.rm}{Should missing values be dropped from grid? Default is \code{TRUE}.}
 
 \item{n_max}{If \code{X} has more than \code{n_max} rows, a random sample of \code{n_max} rows is
 selected from \code{X}. In this case, set a random seed for reproducibility.}
@@ -152,6 +159,7 @@ fit <- lm(as.matrix(iris[1:2]) ~ Petal.Length + Petal.Width * Species, data = ir
 ic <- ice(fit, v = "Petal.Width", X = iris, BY = iris$Species)
 plot(ic)
 plot(ic, center = TRUE)
+plot(ic, swap_dim = TRUE)
 
 # MODEL 3: Gamma GLM -> pass options to predict() via ...
 fit <- glm(Sepal.Length ~ ., data = iris, family = Gamma(link = log))

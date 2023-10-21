@@ -15,8 +15,10 @@ average_loss(object, ...)
   X,
   y,
   pred_fun = stats::predict,
-  BY = NULL,
   loss = "squared_error",
+  agg_cols = FALSE,
+  BY = NULL,
+  by_size = 4L,
   w = NULL,
   ...
 )
@@ -26,20 +28,23 @@ average_loss(object, ...)
   X,
   y,
   pred_fun = function(m, X, ...) stats::predict(m, X, ...)$predictions,
-  BY = NULL,
   loss = "squared_error",
+  agg_cols = FALSE,
+  BY = NULL,
+  by_size = 4L,
   w = NULL,
   ...
 )
 
 \method{average_loss}{Learner}(
   object,
-  v,
   X,
   y,
   pred_fun = NULL,
-  BY = NULL,
   loss = "squared_error",
+  agg_cols = FALSE,
+  BY = NULL,
+  by_size = 4L,
   w = NULL,
   ...
 )
@@ -49,8 +54,10 @@ average_loss(object, ...)
   X = object[["data"]],
   y = object[["y"]],
   pred_fun = object[["predict_function"]],
-  BY = NULL,
   loss = "squared_error",
+  agg_cols = FALSE,
+  BY = NULL,
+  by_size = 4L,
   w = object[["weights"]],
   ...
 )
@@ -59,11 +66,12 @@ average_loss(object, ...)
 \item{object}{Fitted model object.}
 
 \item{...}{Additional arguments passed to \code{pred_fun(object, X, ...)},
-for instance \code{type = "response"} in a \code{\link[=glm]{glm()}} model.}
+for instance \code{type = "response"} in a \code{\link[=glm]{glm()}} model, or \code{reshape = TRUE} in a
+multiclass XGBoost model.}
 
 \item{X}{A data.frame or matrix serving as background dataset.}
 
-\item{y}{Vector/matrix of the response corresponding to \code{X}.}
+\item{y}{Vector/matrix of the response, or the corresponding column names in \code{X}.}
 
 \item{pred_fun}{Prediction function of the form \verb{function(object, X, ...)},
 providing \eqn{K \ge 1} predictions per row. Its first argument represents the
@@ -71,8 +79,6 @@ model \code{object}, its second argument a data structure like \code{X}. Additio
 (such as \code{type = "response"} in a GLM, or \code{reshape = TRUE} in a multiclass XGBoost
 model) can be passed via \code{...}. The default, \code{\link[stats:predict]{stats::predict()}}, will work in
 most cases.}
-
-\item{BY}{Optional grouping vector.}
 
 \item{loss}{One of "squared_error", "logloss", "mlogloss", "poisson",
 "gamma", "absolute_error", "classification_error". Alternatively, a loss function
@@ -82,16 +88,35 @@ For "mlogloss", the response \code{y} can either be a dummy matrix or a discrete
 The latter case is handled via \code{model.matrix(~ as.factor(y) + 0)}.
 For "classification_error", both predictions and responses can be non-numeric.}
 
-\item{w}{Optional vector of case weights for each row of \code{X}.}
+\item{agg_cols}{Should multivariate losses be summed up? Default is \code{FALSE}.
+In combination with the squared error loss, \code{agg_cols = TRUE} gives
+the Brier score for (probabilistic) classification.}
 
-\item{v}{Vector of feature names, by default \code{colnames(X)}.}
+\item{BY}{Optional grouping vector or column name.
+Numeric \code{BY} variables with more than \code{by_size} disjoint values will be
+binned into \code{by_size} quantile groups of similar size.}
+
+\item{by_size}{Numeric \code{BY} variables with more than \code{by_size} unique values will
+be binned into quantile groups. Only relevant if \code{BY} is not \code{NULL}.}
+
+\item{w}{Optional vector of case weights. Can also be a column name of \code{X}.}
 }
 \value{
-A matrix with one row per group and one column per loss dimension.
+An object of class "hstats_matrix" containing these elements:
+\itemize{
+\item \code{M}: Matrix of statistics (one column per prediction dimension), or \code{NULL}.
+\item \code{SE}: Matrix with standard errors of \code{M}, or \code{NULL}.
+Multiply with \code{sqrt(m_rep)} to get \emph{standard deviations} instead.
+Currently, supported only for \code{\link[=perm_importance]{perm_importance()}}.
+\item \code{m_rep}: The number of repetitions behind standard errors \code{SE}, or \code{NULL}.
+Currently, supported only for \code{\link[=perm_importance]{perm_importance()}}.
+\item \code{statistic}: Name of the function that generated the statistic.
+\item \code{description}: Description of the statistic.
+}
 }
 \description{
 Calculates the average loss of a model on a given dataset,
-optionally grouped by a discrete vector.
+optionally grouped by a variable. Use \code{plot()} to visualize the results.
 }
 \section{Methods (by class)}{
 \itemize{
@@ -138,11 +163,16 @@ vector or matrix of the same length as the input.
 \examples{
 # MODEL 1: Linear regression
 fit <- lm(Sepal.Length ~ ., data = iris)
-average_loss(fit, X = iris, y = iris$Sepal.Length)
-average_loss(fit, X = iris, y = iris$Sepal.Length, BY = iris$Species)
+average_loss(fit, X = iris, y = "Sepal.Length")
+average_loss(fit, X = iris, y = iris$Sepal.Length, BY = iris$Sepal.Width)
+average_loss(fit, X = iris, y = "Sepal.Length", BY = "Sepal.Width")
 
 # MODEL 2: Multi-response linear regression
 fit <- lm(as.matrix(iris[1:2]) ~ Petal.Length + Petal.Width + Species, data = iris)
 average_loss(fit, X = iris, y = iris[1:2])
-average_loss(fit, X = iris, y = iris[1:2], loss = "gamma", BY = iris$Species)
+L <- average_loss(
+  fit, X = iris, y = iris[1:2], loss = "gamma", BY = "Species"
+)
+L
+plot(L)
 }

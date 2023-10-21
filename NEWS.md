@@ -1,3 +1,31 @@
+# hstats 1.0.0
+
+## Major changes
+
+- Quantile approximation: `hstats()` now has the option `approx = FALSE`. Set to `TRUE` to replace values of dense numeric columns by `grid_size = 50` quantile midpoints. This will bring a massive speed-up for one-way calculations. Use this option when one-way calculations are slow, or when you want to increase `n_max`.
+- `hstats()`: `n_max` has been increased from 300 to 500 rows. This will make estimates of H-statistics more stable at the price of longer run time. Reduce to 300 for the old behaviour.
+- `hstats()`: Three-way interactions are not anymore calculated by default. Set `threeway_m` to 5 for the old behaviour.
+- Revised plots: The colors and color palettes have changed and can now also be controlled via global options. For instance, to change the fill color of all bars, set `options(hstats.fill = new value)`. Value labels are more clear, and there are more options. Varying color/fill scales now use viridis (inferno). This can be modified on the fly or via `options(hstats.viridis_args = list(...))`.
+- "hstats_matrix" object: All statistics functions, e.g., `h2_pairwise()` or `perm_importance()`, now return a "hstats_matrix". The values are stored in `$M` and can be plotted via `plot()`. Other methods include: `dimnames()`, `rownames()`, `colnames()`, `dim()`, `nrow()`, `ncol()`, `head()`, `tail()`, and subsetting like a normal matrix. This allows, e.g, to select and plot only one column of the results.
+- `perm_importance()`: The `perms` argument has been changed to `m_rep`.
+- `print()` and `summary()` methods have been revised.
+- The arguments `w` (case weights) and `y` (response) can now also be passed as column *names*.
+
+## Minor changes
+
+- Statistics: The argument `top_m` has been moved to the `plot()` method.
+- Statistics: The clipping threshold `eps` of squared numerator statistics has been reduced from `1e-8` to `1e-10`. It is now handled in `hstats()` instead of the statistic functions.
+- `H-squared`: The $H^2$ statistic stored in a "hstats" object is now a matrix with one row (it was a vector).
+- `pd_importance()`: The "hstats" object now contains pre-calculated PD-based importance values in `$pd_importance`.
+- `summary.hstats()` now returns an object of class "hstats_summary" instead of "summary_hstats".
+- `average_loss()` is more flexible regarding the group `BY` argument. It can also be a variable *name*. Non-discrete `BY` variables are now automatically binned. Like `partial_dep()`, binning is controlled by the `by_size = 4` argument.
+- `average_loss()` also returns a "hstats_matrix" object with `print()` and `plot()` method. The values can be extracted via `$M`.
+- The default `v` of `hstats()` and `perm_importance()` is now `NULL`. Internally, it is set to `colnames(X)` (minus the column names of `w` and `y` if passed as name).
+- Missing grid values: `partial_dep()` and `ice()` have received a `na.rm` argument that controls if missing values are dropped during grid creation. The default `TRUE` is compatible with earlier releases.
+- Missing values in `hstats()`: Discrete variables with missings would cause `rowsum()` to launch repeated warnings. This case is now catched.
+- The position of some function arguments have changed.
+- `perm_importance()`: The default of `verbose` is `TRUE` again.
+
 # hstats 0.3.0
 
 This is intended to be the last version before 1.0.0.
@@ -6,7 +34,6 @@ This is intended to be the last version before 1.0.0.
 
 - Grid of `ice()` and `partial_dep()`: So far, the default grid strategy "uniform" used `pretty()` to generate the evaluation points. To provide more predictable grid sizes, and to be more in line with other implementations of partial dependence and ICE, we now use `seq()` to create the uniform grid.
 - `h2_pairwise()` and `h2_threeway()` will now also include 0 values. Use `zero = FALSE` to drop them, see below. The padding with 0 is done at no computational cost, and will affect only up to `pairwise_m` and `threeway_m` features.
-- `hstats()`: The default number of features considered for *three-way interactions* has been changed from `threeway_m = pairwise_m` to the more cautious `threeway_m = min(pairwise_m, 5L)`. Furthermore, `threeway_m` is capped at `pairwise_m`.
 - The `print()` method of `summary.hstats()` is less verbose.
 
 ## Improvements

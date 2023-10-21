@@ -32,7 +32,7 @@ The core functions `hstats()`, `partial_dep()`, `ice()`, `perm_importance()`, an
 ## Limitations
 
 1. H-statistics are based on partial dependence estimates and are thus as good or bad as these. One of their problems is that the model is applied to unseen/impossible feature combinations. In extreme cases, H-statistics intended to be in the range between 0 and 1 can become larger than 1. Accumulated local effects (ALE) [8] mend above problem of partial dependence estimates. They, however, depend on the notion of "closeness", which is highly non-trivial in higher dimension and for discrete features.
-2. Due to their computational complexity, H-statistics are usually evaluated on relatively small subsets of the training (or validation/test) data. Consequently, the estimates are typically not very robust. To get more robust results, increase the default `n_max = 300` of `hstats()`.
+2. Due to their computational complexity of $O(n^2)$, where $n$ is the number of rows considered, H-statistics are usually evaluated on relatively small subsets of the training (or validation/test) data. Consequently, the estimates are typically not very robust. To get more robust results, increase the default `n_max = 500` of `hstats()`.
 
 ## Landscape
 
@@ -102,13 +102,13 @@ average_loss(fit, X = X_valid, y = y_valid)
 Let's calculate different H-statistics via `hstats()`:
 
 ```r
-# 3 seconds on simple laptop - a random forest will take 1-2 minutes
+# 4 seconds on simple laptop - a random forest will take 2 minutes
 set.seed(782)
 system.time(
-  s <- hstats(fit, X = X_train)
+  s <- hstats(fit, X = X_train)  #, approx = TRUE: twice as fast
 )
 s
-# Proportion of prediction variability unexplained by main effects of v
+# H^2 (normalized)
 # [1] 0.10
 
 plot(s)  # Or summary(s) for numeric output
@@ -128,24 +128,18 @@ plot(s)  # Or summary(s) for numeric output
 **Remarks**
 
 1. Pairwise statistics $H^2_{jk}$ are calculated only for the features with strong overall interactions $H^2_j$.
-2. H-statistics need to repeatedly calculate predictions on up to $n^2$ rows. That is why {hstats} samples 300 rows by default. To get more robust results, increase this value at the price of slower run time.
+2. H-statistics need to repeatedly calculate predictions on up to $n^2$ rows. That is why {hstats} samples 500 rows by default. To get more robust results, increase this value at the price of slower run time.
 3. Pairwise statistics $H^2_{jk}$ measures interaction strength relative to the combined effect of the two features. This does not necessarily show which interactions are strongest in absolute numbers. To do so, we can study unnormalized statistics:
 
 ```r
-h2_pairwise(s, normalize = FALSE, squared = FALSE, top_m = 5, plot = TRUE)
+plot(h2_pairwise(s, normalize = FALSE, squared = FALSE))
 ```
 
 ![](man/figures/hstats_pairwise.svg)
 
 Since distance to the ocean and age have high values in overall interaction strength, it is not surprising that a strong relative pairwise interaction is translated into a strong absolute one.
 
-{hstats} crunches three-way interaction statistics $H^2_{jkl}$ as well. The following plot shows them together with the other statistics on prediction scale (`normalize = FALSE` and `squared = FALSE`). The three-way interactions are weaker than the pairwise interactions, yet not negligible:
-
-```r
-plot(s, which = 1:3, normalize = F, squared = F, facet_scales = "free_y", ncol = 1)
-```
-
-![](man/figures/hstats3.svg)
+Note: {hstats} can crunch **three-way** interaction statistics $H^2_{jkl}$ as well. To calculate them for $m$ features with strongest overall interactions, set `threeway_m = m`.
 
 ### Describe interaction
 
@@ -177,29 +171,16 @@ plot(ic, center = TRUE)
 
 ![](man/figures/ice.svg)
 
-The last figure tries to visualize the strongest three-way interaction, without much success though:
-
-```r
-BY <- data.frame(X_train[, c("age", "log_ocean")])
-BY$log_ocean <- BY$log_ocean < 10
-plot(ice(fit, v = "tot_lvg_area", X = X_train, BY = BY), center = TRUE)
-```
-
-![](man/figures/pdp3.svg)
-
 ### Variable importance
 
 In the spirit of [1], and related to [4], we can extract from the "hstats" objects a partial dependence based variable importance measure. It measures not only the main effect strength (see [4]), but also all its interaction effects. It is rather experimental, so use it with care (details in the section "Background"):
 
 ```r
-pd_importance(s, plot = TRUE) +
-  ggtitle("PD-based importance (experimental)")
+plot(pd_importance(s))
 
-# Compared with repeated permutation importance regarding MSE
+# Compared with four times repeated permutation importance regarding MSE
 set.seed(10)
-imp <- perm_importance(fit, X = X_valid, y = y_valid)
-plot(imp) +
-  ggtitle("Permutation importance + standard errors")
+plot(perm_importance(fit, X = X_valid, y = y_valid))
 ```
 
 ![](man/figures/importance.svg)
@@ -223,7 +204,7 @@ fit <- ranger(Sepal.Length ~ ., data = iris)
 ex <- DALEX::explain(fit, data = iris[-1], y = iris[, 1])
 
 s <- hstats(ex)
-s  # Non-additivity index 0.054
+s  # 0.054
 plot(s)
 
 # Strongest relative interaction
@@ -231,9 +212,9 @@ plot(ice(ex, v = "Sepal.Width", BY = "Petal.Width"), center = TRUE)
 plot(partial_dep(ex, v = "Sepal.Width", BY = "Petal.Width"), show_points = FALSE)
 plot(partial_dep(ex, v = c("Sepal.Width", "Petal.Width"), grid_size = 200))
 
-# Check permutation importance
 perm_importance(ex)
 
+# Permutation importance
 # Petal.Length  Petal.Width  Sepal.Width      Species 
 #   0.59836442   0.11625137   0.08246635   0.03982554 
 ```
@@ -246,41 +227,151 @@ Strongest relative interaction shown as ICE plot.
 
 ## Multivariate responses
 
-{hstats} works also with multivariate output such as probabilistic classification.
+{hstats} works also with multivariate output such as probabilistic classification, see examples with 
+
+- ranger, 
+- LightGBM, and 
+- XGBoost.
+
+### Common preparation
 
 ```r
 library(hstats)
-library(ranger)
-library(ggplot2)
 
 set.seed(1)
-fit <- ranger(Species ~ ., data = iris, probability = TRUE)
-average_loss(fit, X = iris, y = iris$Species, loss = "mlogloss")  # 0.0521
 
-s <- hstats(fit, X = iris[-5])
-s
-# Proportion of prediction variability unexplained by main effects of v:
-#      setosa  versicolor   virginica 
-# 0.001547791 0.064550141 0.049758237
+ix <- c(1:40, 51:90, 101:140)
+train <- iris[ix, ]
+valid <- iris[-ix, ]
 
-plot(s, normalize = FALSE, squared = FALSE) +
-  ggtitle("Unnormalized statistics") +
-  scale_fill_viridis_d(begin = 0.1, end = 0.9)
+X_train <- data.matrix(train[-5])
+X_valid <- data.matrix(valid[-5])
+y_train <- train[, 5]
+y_valid <- valid[, 5]
+```
 
-ice(fit, v = "Petal.Length", X = iris, BY = "Petal.Width", n_max = 150) |> 
-  plot(center = TRUE) +
-  ggtitle("Centered ICE plots")
-  
-# Permutation importance 
-perm_importance(fit, X = iris[-5], y = iris$Species, loss = "mlogloss")
- 
-# Petal.Length  Petal.Width Sepal.Length  Sepal.Width 
-#   0.50941613   0.49187688   0.05669978   0.00950009 
+### ranger
+
+```r
+library(ranger)
+
+set.seed(1)
+
+fit <- ranger(Species ~ ., data = train, probability = TRUE)
+average_loss(fit, X = valid, y = "Species", loss = "mlogloss")  # 0.02
+
+perm_importance(fit, X = iris, y = "Species", loss = "mlogloss")
+
+(s <- hstats(fit, X = iris[-5]))
+plot(s, normalize = FALSE, squared = FALSE)
+
+ice(fit, v = "Petal.Length", X = iris, BY = "Petal.Width") |> 
+  plot(center = TRUE)
 ```
 
 ![](man/figures/multivariate.svg)
 
 ![](man/figures/multivariate_ice.svg)
+
+### LightGBM
+
+Note: Versions from 4.0.0 upwards to not anymore require passing `reshape = TRUE` to the prediction function.
+
+```r
+library(lightgbm)
+
+set.seed(1)
+
+params <- list(objective = "multiclass", num_class = 3, learning_rate = 0.2)
+dtrain <- lgb.Dataset(X_train, label = as.integer(y_train) - 1)
+dvalid <- lgb.Dataset(X_valid, label = as.integer(y_valid) - 1)
+
+fit <- lgb.train(
+  params = params, 
+  data = dtrain,
+  valids = list(valid = dvalid),
+  early_stopping_rounds = 20,
+  nrounds = 1000
+)
+
+# Check that predictions require reshape = TRUE to be a matrix
+predict(fit, head(X_train, 2), reshape = TRUE)
+#           [,1]         [,2]         [,3]
+# [1,] 0.9999997 2.918695e-07 2.858720e-14
+# [2,] 0.9999999 1.038470e-07 7.337221e-10
+
+# mlogloss: 9.331699e-05
+average_loss(fit, X = X_valid, y = y_valid, loss = "mlogloss", reshape = TRUE)
+
+perm_importance(
+  fit, X = X_valid, y = y_valid, loss = "mlogloss", reshape = TRUE, m_rep = 100
+)
+# Permutation importance regarding mlogloss
+# Petal.Length  Petal.Width  Sepal.Width Sepal.Length 
+#  2.624241332  1.011168660  0.082477177  0.009757393
+
+partial_dep(fit, v = "Petal.Length", X = X_train, reshape = TRUE) |> 
+  plot(show_points = FALSE)
+
+ice(fit, v = "Petal.Length", X = X_train, reshape = TRUE) |> 
+  plot(swap_dim = TRUE, alpha = 0.05)
+
+# Interaction statistics, including three-way stats
+(H <- hstats(fit, X = X_train, reshape = TRUE, threeway_m = 4))  # 0.3010446 0.4167927 0.1623982
+plot(H, ncol = 1)
+```
+
+![](man/figures/lightgbm.svg)
+
+### XGBoost
+
+Also here, mind the `reshape = TRUE` sent to the prediction function.
+
+```r
+library(xgboost)
+
+set.seed(1)
+
+params <- list(objective = "multi:softprob", num_class = 3, learning_rate = 0.2)
+dtrain <- xgb.DMatrix(X_train, label = as.integer(y_train) - 1)
+dvalid <- xgb.DMatrix(X_valid, label = as.integer(y_valid) - 1)
+
+fit <- xgb.train(
+  params = params, 
+  data = dtrain,
+  watchlist = list(valid = dvalid),
+  early_stopping_rounds = 20,
+  nrounds = 1000
+)
+
+# We need to pass reshape = TRUE to get a beautiful matrix
+predict(fit, head(X_train, 2), reshape = TRUE)
+#           [,1]        [,2]         [,3]
+# [1,] 0.9974016 0.002130089 0.0004682819
+# [2,] 0.9971375 0.002129525 0.0007328897
+
+# mlogloss: 0.006689544
+average_loss(fit, X = X_valid, y = y_valid, loss = "mlogloss", reshape = TRUE)
+
+partial_dep(fit, v = "Petal.Length", X = X_train, reshape = TRUE) |> 
+  plot(show_points = FALSE)
+
+ice(fit, v = "Petal.Length", X = X_train, reshape = TRUE) |> 
+  plot(alpha = 0.05)
+
+perm_importance(
+  fit, X = X_valid, y = y_valid, loss = "mlogloss", reshape = TRUE, m_rep = 100
+)
+# Permutation importance regarding mlogloss
+# Petal.Length  Petal.Width Sepal.Length  Sepal.Width 
+#  1.731532873  0.276671377  0.009158659  0.005717263 
+
+# Interaction statistics including three-way stats
+(H <- hstats(fit, X = X_train, reshape = TRUE, threeway_m = 4))  # 0.02714399 0.16067364 0.11606973
+plot(H, normalize = FALSE, squared = FALSE, facet_scales = "free_y", ncol = 1)
+```
+
+![](man/figures/xgboost.svg)
 
 ## Meta-learning packages
 
@@ -292,27 +383,30 @@ Here, we provide some working examples for "tidymodels", "caret", and "mlr3".
 library(hstats)
 library(tidymodels)
 
-iris_recipe <- iris %>%
+set.seed(1)
+
+iris_recipe <- iris |> 
   recipe(Sepal.Length ~ .)
 
-reg <- linear_reg() %>%
+reg <- linear_reg() |>
   set_engine("lm")
   
-iris_wf <- workflow() %>%
-  add_recipe(iris_recipe) %>%
+iris_wf <- workflow() |>
+  add_recipe(iris_recipe) |>
   add_model(reg)
 
-fit <- iris_wf %>%
+fit <- iris_wf |>
   fit(iris)
   
 s <- hstats(fit, X = iris[-1])
 s # 0 -> no interactions
 plot(partial_dep(fit, v = "Petal.Width", X = iris))
 
-imp <- perm_importance(fit, X = iris[-1], y = iris$Sepal.Length)
+imp <- perm_importance(fit, X = iris, y = "Sepal.Length")
 imp
+# Permutation importance
 # Petal.Length      Species  Petal.Width  Sepal.Width 
-#   4.44682039   0.34064367   0.10195946   0.09520902
+#   4.39197781   0.35038891   0.11966090   0.09604322 
 
 plot(imp)
 ```
@@ -322,6 +416,8 @@ plot(imp)
 ```r
 library(hstats)
 library(caret)
+
+set.seed(1)
 
 fit <- train(
   Sepal.Length ~ ., 
@@ -334,7 +430,7 @@ fit <- train(
 h2(hstats(fit, X = iris[-1]))  # 0
 
 plot(ice(fit, v = "Petal.Width", X = iris), center = TRUE)
-plot(perm_importance(fit, X = iris[-1], y = iris$Sepal.Length))
+plot(perm_importance(fit, X = iris, y = "Sepal.Length"))
 ```
 
 ### mlr3
@@ -344,6 +440,8 @@ library(hstats)
 library(mlr3)
 library(mlr3learners)
 
+set.seed(1)
+
 # Probabilistic classification
 task_iris <- TaskClassif$new(id = "class", backend = iris, target = "Species")
 fit_rf <- lrn("classif.ranger", predict_type = "prob")
@@ -352,7 +450,8 @@ s <- hstats(fit_rf, X = iris[-5], threeway_m = 0)
 plot(s)
 
 # Permutation importance
-plot(perm_importance(fit_rf, X = iris[-5], y = iris$Species, loss = "mlogloss"))
+perm_importance(fit_rf, X = iris, y = "Species", loss = "mlogloss") |> 
+  plot()
 ```
 
 ## Background
@@ -498,7 +597,7 @@ In [5], $1 - H^2$ is called *additivity index*. A similar measure using accumula
 
 Calculation of all $H_j^2$ requires $O(n^2 p)$ predictions, while calculating of all pairwise $H_{jk}$ requires $O(n^2 p^2$ predictions. Therefore, we suggest to reduce the workflow in two important ways:
 
-1. Evaluate the statistics only on a subset of the data, e.g., on $n' = 300$ observations.
+1. Evaluate the statistics only on a subset of the data, e.g., on $n' = 500$ observations.
 2. Calculate $H_j^2$ for all features. Then, select a small number $m = O(\sqrt{p})$ of features with highest $H^2_j$ and do pairwise calculations only on this subset.
 
 This leads to a total number of $O(n'^2 p)$ predictions. If also three-way interactions are to be studied, $m$ should be of the order $p^{1/3}$.
@@ -516,7 +615,7 @@ $$
 Therefore, the following measure of variable importance follows:
 
 $$
-	Imp_{j} = \frac{\frac{1}{n} \sum_{i = 1}^n\big[F(\boldsymbol x_i) - \hat F_{\setminus j}(\boldsymbol x_{i\setminus j})\big]^2}{\frac{1}{n} \sum_{i = 1}^n\big[F(\boldsymbol x_i)\big]^2}.
+	PDI_{j} = \frac{\frac{1}{n} \sum_{i = 1}^n\big[F(\boldsymbol x_i) - \hat F_{\setminus j}(\boldsymbol x_{i\setminus j})\big]^2}{\frac{1}{n} \sum_{i = 1}^n\big[F(\boldsymbol x_i)\big]^2}.
 $$
 
 It differs from $H^2_j$ only by not subtracting the main effect of the $j$-th feature in the numerator. It can be read as the proportion of prediction variability unexplained by all other features. As such, it measures variable importance of the $j$-th feature, including its interaction effects.
