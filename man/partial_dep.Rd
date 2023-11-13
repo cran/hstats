@@ -121,7 +121,7 @@ of grid values. Set to \code{0:1} for no trimming.}
 \item{strategy}{How to find grid values of non-discrete numeric columns?
 Either "uniform" or "quantile", see description of \code{\link[=univariate_grid]{univariate_grid()}}.}
 
-\item{na.rm}{Should missing values be dropped from grid? Default is \code{TRUE}.}
+\item{na.rm}{Should missing values be dropped from the grid? Default is \code{TRUE}.}
 
 \item{n_max}{If \code{X} has more than \code{n_max} rows, a random sample of \code{n_max} rows is
 selected from \code{X}. In this case, set a random seed for reproducibility.}
@@ -187,30 +187,38 @@ fit <- lm(Sepal.Length ~ . + Species * Petal.Length, data = iris)
 (pd <- partial_dep(fit, v = "Species", X = iris))
 plot(pd)
 
+\dontrun{
 # Stratified by BY variable (numerics are automatically binned)
 pd <- partial_dep(fit, v = "Species", X = iris, BY = "Petal.Length")
 plot(pd)
 
 # Multivariable input
-v <- c("Species", "Petal.Width")
+v <- c("Species", "Petal.Length")
 pd <- partial_dep(fit, v = v, X = iris, grid_size = 100L)
 plot(pd, rotate_x = TRUE)
+plot(pd, d2_geom = "line")  # often better to read
 
 # With grouping
-pd <- partial_dep(fit, v = v, X = iris, grid_size = 100L, BY = "Petal.Length")
+pd <- partial_dep(fit, v = v, X = iris, grid_size = 100L, BY = "Petal.Width")
 plot(pd, rotate_x = TRUE)
+plot(pd, rotate_x = TRUE, d2_geom = "line")
+plot(pd, rotate_x = TRUE, d2_geom = "line", swap_dim = TRUE)
 
 # MODEL 2: Multi-response linear regression
-fit <- lm(as.matrix(iris[1:2]) ~ Petal.Length + Petal.Width * Species, data = iris)
+fit <- lm(as.matrix(iris[, 1:2]) ~ Petal.Length + Petal.Width * Species, data = iris)
 pd <- partial_dep(fit, v = "Petal.Width", X = iris, BY = "Species")
 plot(pd, show_points = FALSE)
-plot(partial_dep(fit, v = c("Species", "Petal.Width"), X = iris), rotate_x = TRUE)
+pd <- partial_dep(fit, v = c("Species", "Petal.Width"), X = iris)
+plot(pd, rotate_x = TRUE)
+plot(pd, d2_geom = "line", rotate_x = TRUE)
+plot(pd, d2_geom = "line", rotate_x = TRUE, swap_dim = TRUE)
 
 # Multivariate, multivariable, and BY (no plot available)
 pd <- partial_dep(
   fit, v = c("Petal.Width", "Petal.Length"), X = iris, BY = "Species"
 )
 pd
+}
 
 # MODEL 3: Gamma GLM -> pass options to predict() via ...
 fit <- glm(Sepal.Length ~ ., data = iris, family = Gamma(link = log))

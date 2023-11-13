@@ -12,7 +12,7 @@
 #'   F(\mathbf{x}) = F_j(x_j) + F_{\setminus j}(\mathbf{x}_{\setminus j}).
 #' }
 #' Correspondingly, Friedman and Popescu's statistic of overall interaction 
-#' strength is given by
+#' strength of \eqn{x_j} is given by
 #' \deqn{
 #'   H_j^2 = \frac{\frac{1}{n} \sum_{i = 1}^n\big[F(\mathbf{x}_i) - 
 #'   \hat F_j(x_{ij}) - \hat F_{\setminus j}(\mathbf{x}_{i\setminus j})
@@ -60,13 +60,13 @@
 #' @examples
 #' # MODEL 1: Linear regression
 #' fit <- lm(Sepal.Length ~ . + Petal.Width:Species, data = iris)
-#' s <- hstats(fit, X = iris[-1])
+#' s <- hstats(fit, X = iris[, -1])
 #' h2_overall(s)
 #' plot(h2_overall(s))
 #' 
 #' # MODEL 2: Multi-response linear regression
-#' fit <- lm(as.matrix(iris[1:2]) ~ Petal.Length + Petal.Width * Species, data = iris)
-#' s <- hstats(fit, X = iris[3:5], verbose = FALSE)
+#' fit <- lm(as.matrix(iris[, 1:2]) ~ Petal.Length + Petal.Width * Species, data = iris)
+#' s <- hstats(fit, X = iris[, 3:5], verbose = FALSE)
 #' plot(h2_overall(s, zero = FALSE))
 h2_overall <- function(object, ...) {
   UseMethod("h2_overall")

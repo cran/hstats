@@ -34,17 +34,19 @@
 #' plot(ic)
 #' plot(ic, center = TRUE)
 #' 
+#' \dontrun{
 #' # Stratified by two variables (the second one goes into facets)
 #' ic <- ice(fit, v = "Petal.Length", X = iris, BY = c("Petal.Width", "Species"))
 #' plot(ic)
 #' plot(ic, center = TRUE)
 #' 
 #' # MODEL 2: Multi-response linear regression
-#' fit <- lm(as.matrix(iris[1:2]) ~ Petal.Length + Petal.Width * Species, data = iris)
+#' fit <- lm(as.matrix(iris[, 1:2]) ~ Petal.Length + Petal.Width * Species, data = iris)
 #' ic <- ice(fit, v = "Petal.Width", X = iris, BY = iris$Species)
 #' plot(ic)
 #' plot(ic, center = TRUE)
 #' plot(ic, swap_dim = TRUE)
+#' }
 #'
 #' # MODEL 3: Gamma GLM -> pass options to predict() via ...
 #' fit <- glm(Sepal.Length ~ ., data = iris, family = Gamma(link = log))
@@ -109,9 +111,19 @@ ice.default <- function(object, v, X, pred_fun = stats::predict,
   }
 
   ice_out <- ice_raw(
-    object, v = v, X = X, grid = grid, pred_fun = pred_fun, pred_only = FALSE, ...
+    object, 
+    v = v, 
+    X = X, 
+    grid = grid, 
+    pred_fun = pred_fun, 
+    pred_only = FALSE,
+    ohe = TRUE,
+    ...
   )
   pred <- ice_out[["pred"]]
+  if (!is.matrix(pred)) {
+    pred <- as.matrix(pred)
+  }
   grid_pred <- ice_out[["grid_pred"]]
   K <- ncol(pred)
   if (is.null(colnames(pred))) {

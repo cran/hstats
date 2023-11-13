@@ -39,7 +39,7 @@ The core functions `hstats()`, `partial_dep()`, `ice()`, `perm_importance()`, an
 {hstats} is not the first R package to explore interactions. Here is an incomplete selection:
 
 - [{gbm}](https://CRAN.R-project.org/package=gbm): Implementation of m-wise interaction statistics of [1] for {gbm} models using the weighted tree-traversal method of [2] to estimate partial dependence functions.
-- [{iml}](https://CRAN.R-project.org/package=iml): Variant of pairwise interaction statistics of [1].
+- [{iml}](https://CRAN.R-project.org/package=iml): Implementation of overall and pairwise H-statistics.
 - [{EIX}](https://CRAN.R-project.org/package=EIX): Interaction statistics extracted from the tree structure of XGBoost and LightGBM.
 - [{randomForestExplainer}](https://CRAN.R-project.org/package=randomForestExplainer): Interaction statistics extracted from the tree structure of random forests.
 - [{vivid}](https://CRAN.R-project.org/package=vivid): Cool visualization of interaction patterns. Partly based on {flashlight}.
@@ -146,7 +146,7 @@ Note: {hstats} can crunch **three-way** interaction statistics $H^2_{jkl}$ as we
 Let's study different plots to understand *how* the strong interaction between distance to the ocean and age looks like. We will check the following three visualizations.
 
 1. Stratified PDP
-2. Two-dimensional PDP
+2. Two-dimensional PDP (once as heatmap, once by representing the second variable on the color scale)
 3. Centered ICE plot with colors
 
 They all reveal a substantial interaction between the two variables in the sense that the age effect gets weaker the closer to the ocean. Note that numeric `BY` features are automatically binned into quartile groups.
@@ -160,9 +160,11 @@ plot(partial_dep(fit, v = "age", X = X_train, BY = "log_ocean"), show_points = F
 ```r
 pd <- partial_dep(fit, v = c("age", "log_ocean"), X = X_train, grid_size = 1000)
 plot(pd)
+plot(pd, d2_geom = "line", show_points = FALSE)
 ```
 
-![](man/figures/pdp_2d.png)
+![](man/figures/pdp_2d.svg)
+![](man/figures/pdp_2d_line.svg)
 
 ```r
 ic <- ice(fit, v = "age", X = X_train, BY = "log_ocean")
@@ -201,7 +203,7 @@ library(ranger)
 set.seed(1)
 
 fit <- ranger(Sepal.Length ~ ., data = iris)
-ex <- DALEX::explain(fit, data = iris[-1], y = iris[, 1])
+ex <- DALEX::explain(fit, data = iris[, -1], y = iris[, 1])
 
 s <- hstats(ex)
 s  # 0.054
@@ -227,7 +229,7 @@ Strongest relative interaction shown as ICE plot.
 
 ## Multivariate responses
 
-{hstats} works also with multivariate output such as probabilistic classification, see examples with 
+{hstats} works also with multivariate output, see examples with 
 
 - ranger, 
 - LightGBM, and 
@@ -238,16 +240,14 @@ Strongest relative interaction shown as ICE plot.
 ```r
 library(hstats)
 
-set.seed(1)
-
 ix <- c(1:40, 51:90, 101:140)
 train <- iris[ix, ]
 valid <- iris[-ix, ]
 
-X_train <- data.matrix(train[-5])
-X_valid <- data.matrix(valid[-5])
-y_train <- train[, 5]
-y_valid <- valid[, 5]
+X_train <- data.matrix(train[, -5])
+X_valid <- data.matrix(valid[, -5])
+y_train <- train[[5]]
+y_valid <- valid[[5]]
 ```
 
 ### ranger
@@ -262,7 +262,7 @@ average_loss(fit, X = valid, y = "Species", loss = "mlogloss")  # 0.02
 
 perm_importance(fit, X = iris, y = "Species", loss = "mlogloss")
 
-(s <- hstats(fit, X = iris[-5]))
+(s <- hstats(fit, X = iris[, -5]))
 plot(s, normalize = FALSE, squared = FALSE)
 
 ice(fit, v = "Petal.Length", X = iris, BY = "Petal.Width") |> 
@@ -317,7 +317,9 @@ ice(fit, v = "Petal.Length", X = X_train, reshape = TRUE) |>
   plot(swap_dim = TRUE, alpha = 0.05)
 
 # Interaction statistics, including three-way stats
-(H <- hstats(fit, X = X_train, reshape = TRUE, threeway_m = 4))  # 0.3010446 0.4167927 0.1623982
+(H <- hstats(fit, X = X_train, reshape = TRUE, threeway_m = 4))  
+# 0.3010446 0.4167927 0.1623982
+
 plot(H, ncol = 1)
 ```
 
@@ -367,11 +369,38 @@ perm_importance(
 #  1.731532873  0.276671377  0.009158659  0.005717263 
 
 # Interaction statistics including three-way stats
-(H <- hstats(fit, X = X_train, reshape = TRUE, threeway_m = 4))  # 0.02714399 0.16067364 0.11606973
+(H <- hstats(fit, X = X_train, reshape = TRUE, threeway_m = 4))  
+# 0.02714399 0.16067364 0.11606973
+
 plot(H, normalize = FALSE, squared = FALSE, facet_scales = "free_y", ncol = 1)
 ```
 
 ![](man/figures/xgboost.svg)
+
+### (Non-probabilistic) classification works as well
+
+```r
+library(ranger)
+
+set.seed(1)
+
+fit <- ranger(Species ~ ., data = train)
+average_loss(fit, X = valid, y = "Species", loss = "classification_error")  # 0
+
+perm_importance(fit, X = valid, y = "Species", loss = "classification_error")
+# Petal.Width Petal.Length Sepal.Length  Sepal.Width 
+#       0.350        0.275        0.000        0.000 
+       
+(s <- hstats(fit, X = train[, -5]))
+# H^2 (normalized)
+#     setosa versicolor  virginica 
+# 0.09885417 0.46151300 0.23238800 
+
+plot(s, normalize = FALSE, squared = FALSE)
+
+partial_dep(fit, v = "Petal.Length", X = train, BY = "Petal.Width") |> 
+  plot(show_points = FALSE)
+```
 
 ## Meta-learning packages
 
@@ -398,7 +427,7 @@ iris_wf <- workflow() |>
 fit <- iris_wf |>
   fit(iris)
   
-s <- hstats(fit, X = iris[-1])
+s <- hstats(fit, X = iris[, -1])
 s # 0 -> no interactions
 plot(partial_dep(fit, v = "Petal.Width", X = iris))
 
@@ -427,7 +456,7 @@ fit <- train(
   trControl = trainControl(method = "none")
 )
 
-h2(hstats(fit, X = iris[-1]))  # 0
+h2(hstats(fit, X = iris[, -1]))  # 0
 
 plot(ice(fit, v = "Petal.Width", X = iris), center = TRUE)
 plot(perm_importance(fit, X = iris, y = "Sepal.Length"))
@@ -446,7 +475,7 @@ set.seed(1)
 task_iris <- TaskClassif$new(id = "class", backend = iris, target = "Species")
 fit_rf <- lrn("classif.ranger", predict_type = "prob")
 fit_rf$train(task_iris)
-s <- hstats(fit_rf, X = iris[-5], threeway_m = 0)
+s <- hstats(fit_rf, X = iris[, -5])
 plot(s)
 
 # Permutation importance
@@ -455,6 +484,8 @@ perm_importance(fit_rf, X = iris, y = "Species", loss = "mlogloss") |>
 ```
 
 ## Background
+
+In [1], Friedman and Popescu introduced different statistics to measure interaction strength based on partial dependence functions. Closely following their notation, we will summarize the main ideas.
 
 ### Partial dependence
 
@@ -473,11 +504,7 @@ A partial dependence plot (PDP) plots the values of $\hat F_s(\boldsymbol x_s)$
 over a grid of evaluation points $\boldsymbol x_s$. Its disaggregated version is called
 *individual conditional expectation* (ICE), see [7].
 
-### Interactions
-
-#### Overall interaction strength
-
-In [1], Friedman and Popescu introduced different statistics to measure interaction strength. Closely following their notation, we will summarize the main ideas. 
+### Overall interaction strength
 
 If there are no interactions involving $x_j$, we can decompose the prediction function $F$ into the sum of the partial dependence $F_j$ on $x_j$ and the partial dependence $F_{\setminus j}$ on all other features $\boldsymbol x_{\setminus j}$, i.e.,
 
@@ -485,7 +512,7 @@ $$
 	F(\boldsymbol x) = F_j(x_j) + F_{\setminus j}(\boldsymbol x_{\setminus j}).
 $$
 
-Correspondingly, Friedman and Popescu's statistic of overall interaction strength is given by
+Correspondingly, Friedman and Popescu's statistic of overall interaction strength of $x_j$ is given by
 
 $$
 	H_{j}^2 = \frac{\frac{1}{n} \sum_{i = 1}^n\big[F(\boldsymbol x_i) - \hat F_j(x_{ij}) - \hat F_{\setminus j}(\boldsymbol x_{i\setminus j})\big]^2}{\frac{1}{n} \sum_{i = 1}^n\big[F(\boldsymbol x_i)\big]^2}.
@@ -501,7 +528,7 @@ $$
 6. $H^2_j = 0$ means there are no interactions associated with $x_j$. The higher the value, the more prediction variability comes from interactions with $x_j$.
 7. Since the denominator is the same for all features, the values of the test statistics can be compared across features.
 
-#### Pairwise interaction strength
+### Pairwise interaction strength
 
 Again following [1], if there are no interaction effects between features $x_j$ and $x_k$, their two-dimensional partial dependence function $F_{jk}$ can be written as the sum of the univariate partial dependencies, i.e.,
 
@@ -509,7 +536,7 @@ $$
   F_{jk}(x_j, x_k) = F_j(x_j) + F_k(x_k).
 $$
 
-Correspondingly, Friedman and Popescu's statistic of pairwise interaction strength is defined as
+Correspondingly, Friedman and Popescu's statistic of pairwise interaction strength between $x_j$ and $x_k$ is defined as
 
 $$
   H_{jk}^2 = \frac{A_{jk}}{\frac{1}{n} \sum_{i = 1}^n\big[\hat F_{jk}(x_{ij}, x_{ik})\big]^2}
@@ -531,9 +558,9 @@ $$
 
 To be better able to compare pairwise interaction strength across variable pairs, and to overcome the problem mentioned in the last remark, we suggest as alternative the unnormalized test statistic on the scale of the predictions, i.e., $\sqrt{A_{jk}}$. 
 
-Furthermore, we do pairwise calculations not for the most *important* features but rather for those features with *strongest overall interactions*.
+Furthermore, instead of focusing on pairwise calculations for the most *important* features, we can select features with *strongest overall interactions*.
 
-#### Three-way interactions
+### Three-way interactions
 
 [1] also describes a test statistic to measure three-way interactions: in case there are no three-way interactions between features $x_j$, $x_k$ and $x_l$, their three-dimensional partial dependence function $F_{jkl}$ can be decomposed into lower order terms:
 
@@ -573,7 +600,7 @@ $$
 
 Similar remarks as for $H^2_{jk}$ apply.
 
-#### Total interaction strength of all variables together
+### Total interaction strength of all variables together
 
 If the model is additive in all features (no interactions), then
 
@@ -593,7 +620,7 @@ A value of 0 means there are no interaction effects at all. Due to (typically un
 
 In [5], $1 - H^2$ is called *additivity index*. A similar measure using accumulated local effects is discussed in [6].
 
-#### Workflow
+### Workflow
 
 Calculation of all $H_j^2$ requires $O(n^2 p)$ predictions, while calculating of all pairwise $H_{jk}$ requires $O(n^2 p^2$ predictions. Therefore, we suggest to reduce the workflow in two important ways:
 
@@ -619,7 +646,6 @@ $$
 $$
 
 It differs from $H^2_j$ only by not subtracting the main effect of the $j$-th feature in the numerator. It can be read as the proportion of prediction variability unexplained by all other features. As such, it measures variable importance of the $j$-th feature, including its interaction effects.
-
 
 ## References
 

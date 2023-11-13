@@ -107,7 +107,7 @@ of grid values. Set to \code{0:1} for no trimming.}
 \item{strategy}{How to find grid values of non-discrete numeric columns?
 Either "uniform" or "quantile", see description of \code{\link[=univariate_grid]{univariate_grid()}}.}
 
-\item{na.rm}{Should missing values be dropped from grid? Default is \code{TRUE}.}
+\item{na.rm}{Should missing values be dropped from the grid? Default is \code{TRUE}.}
 
 \item{n_max}{If \code{X} has more than \code{n_max} rows, a random sample of \code{n_max} rows is
 selected from \code{X}. In this case, set a random seed for reproducibility.}
@@ -149,17 +149,19 @@ ic
 plot(ic)
 plot(ic, center = TRUE)
 
+\dontrun{
 # Stratified by two variables (the second one goes into facets)
 ic <- ice(fit, v = "Petal.Length", X = iris, BY = c("Petal.Width", "Species"))
 plot(ic)
 plot(ic, center = TRUE)
 
 # MODEL 2: Multi-response linear regression
-fit <- lm(as.matrix(iris[1:2]) ~ Petal.Length + Petal.Width * Species, data = iris)
+fit <- lm(as.matrix(iris[, 1:2]) ~ Petal.Length + Petal.Width * Species, data = iris)
 ic <- ice(fit, v = "Petal.Width", X = iris, BY = iris$Species)
 plot(ic)
 plot(ic, center = TRUE)
 plot(ic, swap_dim = TRUE)
+}
 
 # MODEL 3: Gamma GLM -> pass options to predict() via ...
 fit <- glm(Sepal.Length ~ ., data = iris, family = Gamma(link = log))

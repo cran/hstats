@@ -1,5 +1,4 @@
-
-test_that("poor_man_stack() works (test could be improved", {
+test_that("poor_man_stack() works (test could be improved)", {
   y <- c("a", "b", "c")
   z <- c("aa", "bb", "cc")
   X <- data.frame(x = 1:3, y = y, z = z)
@@ -36,7 +35,23 @@ test_that("mat2df() works (test could be improved)", {
   expect_error(mat2df(1:4))
 })
 
-test_that("postprocess() works for matrix input", {
+test_that("postprocess() works for matrix num with 1 column", {
+  num <- cbind(1:3)
+  denom <- cbind(1:3)
+  
+  expect_equal(postprocess(num = num, sort = FALSE), num)
+  expect_equal(postprocess(num = num, denom = denom, sort = FALSE), num / denom)
+  expect_equal(postprocess(num = num), num[3:1, , drop = FALSE])
+  expect_equal(postprocess(num = num, squared = FALSE), sqrt(num[3:1, , drop = FALSE]))
+  
+  expect_equal(postprocess(num = num, denom = 2, sort = FALSE), num / 2)
+  
+  expect_equal(postprocess(num = cbind(0:1), zero = FALSE), rbind(1))
+  expect_equal(postprocess(num = cbind(0:-1), zero = FALSE), rbind(-1))
+  expect_null(postprocess(num = cbind(0), zero = FALSE))
+})
+
+test_that("postprocess() works for matrix num with > 1 column", {
   num <- cbind(a = 1:3, b = c(1, 1, 1))
   denom <- cbind(a = 1:3, b = 1:3)
   
@@ -45,29 +60,16 @@ test_that("postprocess() works for matrix input", {
   expect_equal(postprocess(num = num), num[3:1, ])
   expect_equal(postprocess(num = num, squared = FALSE), sqrt(num[3:1, ]))
   
-  expect_equal(postprocess(num = num, denom = 2, sort = FALSE), num / 2)
+  expect_equal(postprocess(num = num, denom = c(2, 2), sort = FALSE), num / 2)
   expect_equal(
     postprocess(num = num, denom = 1:2, sort = FALSE), 
     num / cbind(c(1, 1, 1), c(2, 2, 2))
   )
   
   expect_equal(postprocess(num = cbind(0:1, 0:1), zero = FALSE), rbind(c(1, 1)))
+  expect_equal(postprocess(num = cbind(0:-1, 0:-1), zero = FALSE), rbind(c(-1, -1)))
   expect_null(postprocess(num = cbind(0, 0), zero = FALSE))
 })
-
-test_that("postprocess() works for vector input", {
-  num <- 1:3
-  denom <- c(2, 4, 6)
-  
-  expect_equal(postprocess(num = num), 3:1)
-  expect_equal(postprocess(num = num, denom = denom), num / denom)
-  expect_equal(postprocess(num = num, sort = FALSE), num)
-  expect_equal(postprocess(num = num, squared = FALSE), sqrt(num[3:1]))
-  
-  expect_equal(postprocess(num = 0:1, denom = c(2, 2), zero = FALSE), 0.5)
-  expect_null(postprocess(num = 0, zero = FALSE))
-})
-
 
 test_that(".zap_small() works for vector input", {
   expect_equal(.zap_small(1:3), 1:3)
@@ -85,7 +87,9 @@ test_that(".zap_small() works for matrix input", {
 fit <- lm(cbind(up = uptake, up2 = 2 * uptake) ~ Type * Treatment * conc, data = CO2)
 H <- hstats(fit, X = CO2[2:4], verbose = FALSE)
 s <- h2_pairwise(H)
-imp <- perm_importance(fit, CO2, v = c("Type", "Treatment", "conc"), y = "uptake")
+imp <- perm_importance(
+  fit, CO2, v = c("Type", "Treatment", "conc"), y = "uptake", verbose = FALSE
+)
 
 test_that("print() method does not give error", {
   capture_output(expect_no_error(print(s)))
@@ -123,7 +127,7 @@ test_that("subsetting works", {
 
 fit <- lm(uptake ~ Type * Treatment * conc, data = CO2)
 set.seed(1L)
-s <- perm_importance(fit, X = CO2[2:4], y = CO2$uptake)
+s <- perm_importance(fit, X = CO2[2:4], y = CO2$uptake, verbose = FALSE)
 
 test_that("print() method does not give error", {
   capture_output(expect_no_error(print(s)))
