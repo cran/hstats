@@ -124,18 +124,24 @@ perm_importance.default <- function(object, X, y, v = NULL,
 
   # Stack y and X m times
   if (m_rep > 1L) {
-    ind <- rep(seq_len(n), times = m_rep)
-    X <- X[ind, , drop = FALSE]
+    ind <- rep.int(seq_len(n), m_rep)
+    X <- rep_rows(X, ind)
     if (is.vector(y) || is.factor(y)) {
       y <- y[ind]
     } else {
-      y <- y[ind, , drop = FALSE]
+      y <- rep_rows(y, ind)
     }
   }
   
   shuffle_perf <- function(z, XX) {
-    ind <- c(replicate(m_rep, sample(seq_len(n))))  # shuffle within n rows
-    XX[, z] <- XX[ind, z]
+    # Shuffle within n rows (could be slightly sped-up via lapply())
+    ind <- c(replicate(m_rep, sample.int(n)))
+    
+    if (is.matrix(XX) || length(z) > 1L) {
+      XX[, z] <- XX[ind, z]
+    } else {
+      XX[[z]] <- XX[[z]][ind]
+    }
     pred <- prepare_pred(pred_fun(object, XX, ...))
     t(wrowmean(loss(y, pred), ngroups = m_rep, w = w))
   }

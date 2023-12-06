@@ -1,6 +1,6 @@
 Package: hstats
 Title: Interaction Statistics
-Version: 1.1.0
+Version: 1.1.1
 Authors@R: 
     person("Michael", "Mayer", , "mayermichael79@gmail.com", role = c("aut", "cre"))
 Description: Fast, model-agnostic implementation of different H-statistics
@@ -23,8 +23,8 @@ Config/testthat/edition: 3
 URL: https://github.com/mayer79/hstats
 BugReports: https://github.com/mayer79/hstats/issues
 NeedsCompilation: no
-Packaged: 2023-11-13 18:13:19 UTC; Michael
+Packaged: 2023-12-06 07:21:00 UTC; mayer
 Author: Michael Mayer [aut, cre]
 Maintainer: Michael Mayer <mayermichael79@gmail.com>
 Repository: CRAN
-Date/Publication: 2023-11-13 18:53:21 UTC
+Date/Publication: 2023-12-06 07:30:02 UTC
