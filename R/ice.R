@@ -173,32 +173,6 @@ ice.ranger <- function(object, v, X,
   )
 }
 
-#' @describeIn ice Method for "mlr3" models.
-#' @export
-ice.Learner <- function(object, v, X,
-                        pred_fun = NULL,
-                        BY = NULL, grid = NULL, grid_size = 49L, trim = c(0.01, 0.99),
-                        strategy = c("uniform", "quantile"), na.rm = TRUE,
-                        n_max = 100L, ...) {
-  if (is.null(pred_fun)) {
-    pred_fun <- mlr3_pred_fun(object, X = X)
-  }
-  ice.default(
-    object = object,
-    v = v,
-    X = X,
-    pred_fun = pred_fun,
-    BY = BY,
-    grid = grid,
-    grid_size = grid_size,
-    trim = trim,
-    strategy = strategy,
-    na.rm = na.rm,
-    n_max = n_max,
-    ...
-  )
-}
-
 #' @describeIn ice Method for DALEX "explainer".
 #' @export
 ice.explainer <- function(object, v = v, X = object[["data"]],
@@ -284,11 +258,8 @@ plot.ice <- function(x, center = FALSE, alpha = 0.2,
   data <- poor_man_stack(data, to_stack = pred_names)
 
   # Distinguish all possible cases
-  grp <- if (is.null(by_names) && K > 1L) "varying_" else by_names[1L]   # can be NULL
-  wrp <- if (!is.null(by_names) && K > 1L) "varying_" 
-  if (length(by_names) == 2L) {
-    wrp <- by_names[2L]
-  }
+  grp <- if (!is.null(by_names)) by_names[1L]
+  wrp <- if (K > 1L) "varying_" else if (length(by_names) == 2L) by_names[2L]
   if (swap_dim) {
     tmp <- grp
     grp <- wrp

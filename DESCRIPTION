@@ -1,6 +1,6 @@
 Package: hstats
 Title: Interaction Statistics
-Version: 1.1.1
+Version: 1.1.2
 Authors@R: 
     person("Michael", "Mayer", , "mayermichael79@gmail.com", role = c("aut", "cre"))
 Description: Fast, model-agnostic implementation of different H-statistics
@@ -16,15 +16,16 @@ Description: Fast, model-agnostic implementation of different H-statistics
 License: GPL (>= 2)
 Depends: R (>= 3.2.0)
 Encoding: UTF-8
-RoxygenNote: 7.2.3
+RoxygenNote: 7.3.1
 Imports: ggplot2, stats, utils
 Suggests: testthat (>= 3.0.0)
 Config/testthat/edition: 3
-URL: https://github.com/mayer79/hstats
+URL: https://github.com/mayer79/hstats,
+        https://mayer79.github.io/hstats/
 BugReports: https://github.com/mayer79/hstats/issues
 NeedsCompilation: no
-Packaged: 2023-12-06 07:21:00 UTC; mayer
+Packaged: 2024-02-03 15:31:02 UTC; Michael
 Author: Michael Mayer [aut, cre]
 Maintainer: Michael Mayer <mayermichael79@gmail.com>
 Repository: CRAN
-Date/Publication: 2023-12-06 07:30:02 UTC
+Date/Publication: 2024-02-03 15:50:02 UTC
