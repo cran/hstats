@@ -1,10 +1,10 @@
-# hstats <a href='https://github.com/mayer79/hstats'><img src='man/figures/logo.png' align="right" height="139"/></a>
+# hstats <a href='https://github.com/ModelOriented/hstats'><img src='man/figures/logo.png' align="right" height="139"/></a>
 
 <!-- badges: start -->
 
 [![CRAN status](http://www.r-pkg.org/badges/version/hstats)](https://cran.r-project.org/package=hstats)
-[![R-CMD-check](https://github.com/mayer79/hstats/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/mayer79/hstats/actions)
-[![Codecov test coverage](https://codecov.io/gh/mayer79/hstats/graph/badge.svg)](https://app.codecov.io/gh/mayer79/hstats?branch=main)
+[![R-CMD-check](https://github.com/ModelOriented/hstats/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/ModelOriented/hstats/actions)
+[![Codecov test coverage](https://codecov.io/gh/ModelOriented/hstats/graph/badge.svg)](https://app.codecov.io/gh/ModelOriented/hstats?branch=main)
 
 [![](https://cranlogs.r-pkg.org/badges/hstats)](https://cran.r-project.org/package=hstats) 
 [![](https://cranlogs.r-pkg.org/badges/grand-total/hstats?color=orange)](https://cran.r-project.org/package=hstats)
@@ -52,7 +52,7 @@ The core functions `hstats()`, `partial_dep()`, `ice()`, `perm_importance()`, an
 install.packages("hstats")
 
 # From Github
-devtools::install_github("mayer79/hstats")
+devtools::install_github("ModelOriented/hstats")
 ```
 
 ## Usage
@@ -152,7 +152,8 @@ Let's study different plots to understand *how* the strong interaction between d
 They all reveal a substantial interaction between the two variables in the sense that the age effect gets weaker the closer to the ocean. Note that numeric `BY` features are automatically binned into quartile groups.
 
 ```r
-plot(partial_dep(fit, v = "age", X = X_train, BY = "log_ocean"), show_points = FALSE)
+partial_dep(fit, v = "age", X = X_train, BY = "log_ocean") |> 
+  plot(show_points = FALSE)
 ```
 
 ![](man/figures/pdp_ocean_age.svg)
@@ -167,8 +168,8 @@ plot(pd, d2_geom = "line", show_points = FALSE)
 ![](man/figures/pdp_2d_line.svg)
 
 ```r
-ic <- ice(fit, v = "age", X = X_train, BY = "log_ocean")
-plot(ic, center = TRUE)
+ice(fit, v = "age", X = X_train, BY = "log_ocean") |> 
+  plot(center = TRUE)
 ```
 
 ![](man/figures/ice.svg)
@@ -178,11 +179,14 @@ plot(ic, center = TRUE)
 In the spirit of [1], and related to [4], we can extract from the "hstats" objects a partial dependence based variable importance measure. It measures not only the main effect strength (see [4]), but also all its interaction effects. It is rather experimental, so use it with care (details in the section "Background"):
 
 ```r
-plot(pd_importance(s))
+pd_importance(s) |> 
+  plot()
 
 # Compared with four times repeated permutation importance regarding MSE
 set.seed(10)
-plot(perm_importance(fit, X = X_valid, y = y_valid))
+
+perm_importance(fit, X = X_valid, y = y_valid) |> 
+  plot()
 ```
 
 ![](man/figures/importance.svg)
@@ -209,14 +213,17 @@ s <- hstats(ex)
 s  # 0.054
 plot(s)
 
-# Strongest relative interaction
-plot(ice(ex, v = "Sepal.Width", BY = "Petal.Width"), center = TRUE)
-plot(partial_dep(ex, v = "Sepal.Width", BY = "Petal.Width"), show_points = FALSE)
-plot(partial_dep(ex, v = c("Sepal.Width", "Petal.Width"), grid_size = 200))
+# Strongest relative interaction (different visualizations)
+ice(ex, v = "Sepal.Width", BY = "Petal.Width") |> 
+  plot(center = TRUE)
+  
+partial_dep(ex, v = "Sepal.Width", BY = "Petal.Width") |> 
+  plot(show_points = FALSE)
+
+partial_dep(ex, v = c("Sepal.Width", "Petal.Width"), grid_size = 200) |> 
+  plot()
 
 perm_importance(ex)
-
-# Permutation importance
 # Petal.Length  Petal.Width  Sepal.Width      Species 
 #   0.59836442   0.11625137   0.07966910   0.03982554 
 ```
@@ -298,7 +305,7 @@ fit <- lgb.train(
 average_loss(fit, X = X_valid, y = y_valid, loss = "mlogloss")
 
 perm_importance(fit, X = X_valid, y = y_valid, loss = "mlogloss", m_rep = 100)
-# Permutation importance regarding mlogloss
+
 # Petal.Length  Petal.Width  Sepal.Width Sepal.Length 
 #  2.624241332  1.011168660  0.082477177  0.009757393
 
@@ -369,33 +376,6 @@ plot(H, normalize = FALSE, squared = FALSE, facet_scales = "free_y", ncol = 1)
 
 ![](man/figures/xgboost.svg)
 
-### Non-probabilistic classification
-
-When predictions are factor levels, {hstats} uses internal one-hot-encoding. Usually, probabilistic classification makes more sense though.
-
-```r
-library(ranger)
-
-set.seed(1)
-
-fit <- ranger(Species ~ ., data = train)
-average_loss(fit, X = valid, y = "Species", loss = "classification_error")  # 0
-
-perm_importance(fit, X = valid, y = "Species", loss = "classification_error")
-# Petal.Width Petal.Length Sepal.Length  Sepal.Width 
-#       0.350        0.275        0.000        0.000 
-       
-(s <- hstats(fit, X = train[, -5]))
-# H^2 (normalized)
-#     setosa versicolor  virginica 
-# 0.09885417 0.46151300 0.23238800 
-
-plot(s, normalize = FALSE, squared = FALSE)
-
-partial_dep(fit, v = "Petal.Length", X = train, BY = "Petal.Width") |> 
-  plot(show_points = FALSE)
-```
-
 ## Meta-learning packages
 
 Here, we provide examples for {tidymodels}, {caret}, and {mlr3}.
@@ -423,7 +403,9 @@ fit <- iris_wf |>
   
 s <- hstats(fit, X = iris[, -1])
 s # 0 -> no interactions
-plot(partial_dep(fit, v = "Petal.Width", X = iris))
+
+partial_dep(fit, v = "Petal.Width", X = iris) |> 
+  plot()
 
 imp <- perm_importance(fit, X = iris, y = "Sepal.Length")
 imp
@@ -452,8 +434,11 @@ fit <- train(
 
 h2(hstats(fit, X = iris[, -1]))  # 0
 
-plot(ice(fit, v = "Petal.Width", X = iris), center = TRUE)
-plot(perm_importance(fit, X = iris, y = "Sepal.Length"))
+ice(fit, v = "Petal.Width", X = iris) |> 
+  plot(center = TRUE)
+  
+perm_importance(fit, X = iris, y = "Sepal.Length") |> 
+  plot()
 ```
 
 ### mlr3
@@ -469,18 +454,14 @@ set.seed(1)
 task_iris <- TaskClassif$new(id = "class", backend = iris, target = "Species")
 fit_rf <- lrn("classif.ranger", predict_type = "prob")
 fit_rf$train(task_iris)
-s <- hstats(fit_rf, X = iris[, -5])
+s <- hstats(fit_rf, X = iris[, -5], predict_type = "prob")
 plot(s)
 
-# Permutation importance (probabilistic using multi-logloss)
+# Permutation importance (wrt multi-logloss)
 p <- perm_importance(
   fit_rf, X = iris, y = "Species", loss = "mlogloss", predict_type = "prob"
 )
 plot(p)
-
-# Non-probabilistic using classification error
-perm_importance(fit_rf, X = iris, y = "Species", loss = "classification_error") |> 
-  plot()
 ```
 
 ## Background
