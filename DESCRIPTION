@@ -1,9 +1,9 @@
 Package: hstats
 Title: Interaction Statistics
-Version: 1.2.0
+Version: 1.2.1
 Authors@R: c(
     person("Michael", "Mayer", , "mayermichael79@gmail.com", role = c("aut", "cre"),
-           comment = c(ORCID = "0000-0002-6148-5756")),
+           comment = c(ORCID = "0009-0007-2540-9629")),
     person("Przemyslaw", "Biecek", , "przemyslaw.biecek@gmail.com", role = "ctb",
            comment = c(ORCID = "0000-0001-8423-1823"))
   )
@@ -28,9 +28,9 @@ URL: https://github.com/ModelOriented/hstats/,
         https://modeloriented.github.io/hstats/
 BugReports: https://github.com/ModelOriented/hstats/issues/
 NeedsCompilation: no
-Packaged: 2024-07-12 12:09:54 UTC; Michael
-Author: Michael Mayer [aut, cre] (<https://orcid.org/0000-0002-6148-5756>),
+Packaged: 2024-08-17 15:36:18 UTC; Michael
+Author: Michael Mayer [aut, cre] (<https://orcid.org/0009-0007-2540-9629>),
   Przemyslaw Biecek [ctb] (<https://orcid.org/0000-0001-8423-1823>)
 Maintainer: Michael Mayer <mayermichael79@gmail.com>
 Repository: CRAN
-Date/Publication: 2024-07-12 12:30:06 UTC
+Date/Publication: 2024-08-17 15:50:09 UTC
